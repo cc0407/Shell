@@ -11,8 +11,6 @@
 #include <limits.h>
 #include <string.h>
 
-#define MAX_STR 1024
-
 typedef struct pidNode_struct {
     int pid;
     struct pidNode_struct* next;
@@ -20,8 +18,9 @@ typedef struct pidNode_struct {
 
 void inputLoop();
 int newSynchronousProcess();
-void readInputLine( char* buffer );
+char* readInputLine();
 void exitShell();
+void freeArgs(char ** args, int numArgs);
 
 void testLinkedList();
 void addToList( int pid );

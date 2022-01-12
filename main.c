@@ -12,20 +12,47 @@ int main(int argc, char* argv[])
 }
 
 void inputLoop() {
-    //TODO i dont like that this has a max value
-    char inBuffer[MAX_STR];
+    char* inBuffer = NULL;
+    char* inputCopy; // For freeing
+    char** args = NULL;
+    char* token;
+    int numArgs;
+    char* command;
 
     while(1) {
         printf("> ");
-        readInputLine( inBuffer );
+        inBuffer = readInputLine();
+        inputCopy = inBuffer;
 
         if( strcmp(inBuffer, "exit") == 0 ) {
+            free( inputCopy );
             exitShell();
         }
 
-        //TODO handle the input and call functions
-        newSynchronousProcess();
 
+        // Grab command from inBuffer
+        command = strtok_r(inBuffer, " ", &inBuffer);
+
+        // Grab optional args from inBuffer
+        token = strtok_r(inBuffer, " ", &inBuffer);
+        while (token != NULL) {
+            numArgs++;
+
+            // arg list is empty, must malloc first
+            if( args == NULL ) {
+                args = (char**)calloc(0, numArgs * sizeof(char*));
+            }
+            else {
+                args = (char**)realloc(args, numArgs * sizeof(char*));
+            }
+
+            // allocate space for new arg
+            args[numArgs - 1] = (char*)(malloc( sizeof(char) * strlen(token) ));
+            strcpy(args[numArgs - 1], token);
+        }
+        
+        newSynchronousProcess(command, args);
+        free( inputCopy );
     }
 }
 
@@ -46,30 +73,28 @@ void exitShell() {
     exit(EXIT_SUCCESS);
 }
 
-void readInputLine( char* buffer ) {
-    int bufferLen;
-    char *result = fgets(buffer, MAX_STR, stdin);
+char* readInputLine() {
+    int bufferLen = 100;
+    char* buffer;
+    int charAmt = 0;
+    char c;
+    // Allocate initial buffer
+    buffer = malloc(bufferLen * sizeof(char));
+    c = getchar();
 
-    // Input Validation
-    if(result == NULL) {
-        buffer = "";
-        return;
+    while( c != '\n' && c != EOF) {
+        if( charAmt >= bufferLen ) {
+            buffer = realloc( buffer, (bufferLen += 100) * sizeof(char));
+        }
+        buffer[charAmt] = c;
+        charAmt++;
+        c = getchar();
     }
 
-    bufferLen = strlen(buffer);
-    if(bufferLen == 0) {
-        buffer = "";
-        return;
-    }
-
-    // Removing newline if present
-    if(buffer[bufferLen - 1] == '\n') {
-        buffer[bufferLen - 1] = '\0';
-    }
-
+    return buffer;
 }
 
-int newSynchronousProcess() {
+int newSynchronousProcess(char* command, char ** args) {
     pid_t pid;
     int status;
 
@@ -189,3 +214,9 @@ void freeNode(pidNode* node) {
     pidAmt--;
 }
 
+void freeArgs( char* args[], int numArgs ) {
+    for( int i = 0; i < numArgs; i++ ) {
+        free(args[i]);
+    }
+    free(args);
+}
