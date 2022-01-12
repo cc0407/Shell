@@ -27,7 +27,10 @@ void inputLoop() {
 }
 
 void exitShell() {
-    printf("myShell terminating\n");
+    printf("myShell terminating...\n");
+    kill(0, SIGKILL); // TODO change 0 to loop through the PID of all children that way it doesnt remove the parent as well
+
+    printf("[Process completed]");
     exit(EXIT_SUCCESS);
 }
 
