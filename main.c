@@ -14,10 +14,11 @@ int main(int argc, char* argv[])
 void inputLoop() {
     char* inBuffer = NULL;
     char* inputCopy; // For freeing
+    //char* command;
     char** args = NULL;
-    char* token;
     int numArgs;
-    char* command;
+    char* token;
+
 
     while(1) {
         printf("> ");
@@ -29,10 +30,7 @@ void inputLoop() {
             exitShell();
         }
 
-
-        // Grab command from inBuffer
-        command = strtok_r(inBuffer, " ", &inBuffer);
-
+        //TODO SOMETHING IS VERY WRONG HERE AND IS INF LOOPING
         // Grab optional args from inBuffer
         token = strtok_r(inBuffer, " ", &inBuffer);
         while (token != NULL) {
@@ -50,8 +48,11 @@ void inputLoop() {
             args[numArgs - 1] = (char*)(malloc( sizeof(char) * strlen(token) ));
             strcpy(args[numArgs - 1], token);
         }
+        // Add null terminated pointer to end of arg list
+        args = (char**)realloc(args, ++numArgs * sizeof(char*));
+        args[numArgs - 1] = NULL;
         
-        newSynchronousProcess(command, args);
+        newSynchronousProcess(args[0], args);
         free( inputCopy );
     }
 }
@@ -97,20 +98,27 @@ char* readInputLine() {
 int newSynchronousProcess(char* command, char ** args) {
     pid_t pid;
     int status;
+    char* newCommand = malloc(sizeof(char) * (strlen(command) + 5));
+    strcpy(newCommand, "/bin/");
+    strcat(newCommand, command);
+    printf("%s\n", newCommand);
 
     pid = fork();
 
     if (pid < 0) {
         fprintf(stderr, "Fork Failed\n");
+        free(newCommand);
         return 1;
     }
     else if (pid == 0) {
-        execlp("/bin/ls", "ls", NULL);
+        execvp(newCommand, args);
     }
     else {
         wait(&status);
         printf("Child Complete\n");
     }
+
+    free(newCommand);
     return 0;
 }
 
