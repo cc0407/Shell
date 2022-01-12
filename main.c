@@ -30,10 +30,19 @@ void inputLoop() {
 }
 
 void exitShell() {
+    pidNode* currNode;
     printf("myShell terminating...\n");
-    kill(0, SIGKILL); // TODO change 0 to loop through the PID of all children that way it doesnt remove the parent as well
 
-    printf("[Process completed]");
+    // Iteratively kills all active processes
+    while( pidList != NULL ) {
+        //printf("pid: %d\n", pidList->pid);
+        kill(pidList->pid, SIGKILL);
+        currNode = pidList;
+        pidList = pidList->next;
+        freeNode(currNode);
+    }
+
+    printf("[Process completed]\n");
     exit(EXIT_SUCCESS);
 }
 
