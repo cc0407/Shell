@@ -13,9 +13,23 @@
 
 #define MAX_STR 1024
 
+typedef struct pidNode_struct {
+    int pid;
+    struct pidNode_struct* next;
+} pidNode;
+
 void inputLoop();
-void example();
+int newSynchronousProcess();
 void readInputLine( char* buffer );
 void exitShell();
+
+void testLinkedList();
+void addToList( int pid );
+void printList();
+void freeList();
+void freeNode(pidNode* node);
+void removeFromList(int pid);
+
+
 
 #endif /* MYSHELL */
