@@ -2,27 +2,56 @@
 
 int main(int argc, char* argv[])
 {
+    printf("Welcome!\n");
     inputLoop();
 
     return 0;
 }
 
 void inputLoop() {
-    char* inBuffer = NULL;
-    readInputLine( inBuffer );
+    //TODO i dont like that this has a max value
+    char inBuffer[MAX_STR];
 
-    printf("\n> ");
+    while(1) {
+        printf("> ");
+        readInputLine( inBuffer );
 
-    printf("%s\n", inBuffer);
+        if( strcmp(inBuffer, "exit") == 0 ) {
+            exitShell();
+        }
+
+        //TODO handle the input and call functions
+        printf("%s\n", inBuffer);
+
+    }
+}
+
+void exitShell() {
+    printf("myShell terminating\n");
+    exit(EXIT_SUCCESS);
 }
 
 void readInputLine( char* buffer ) {
-    int bufferLength;
-    char *result = fgets(buffer, 1024, stdin);
+    int bufferLen;
+    char *result = fgets(buffer, MAX_STR, stdin);
 
-    if(result == NULL || strlen(buffer) == 0) {
-        buffer = NULL;
+    // Input Validation
+    if(result == NULL) {
+        buffer = "";
+        return;
     }
+
+    bufferLen = strlen(buffer);
+    if(bufferLen == 0) {
+        buffer = "";
+        return;
+    }
+
+    // Removing newline if present
+    if(buffer[bufferLen - 1] == '\n') {
+        buffer[bufferLen - 1] = '\0';
+    }
+
 }
 
 void example() {
@@ -32,7 +61,7 @@ void example() {
     pid = fork();
     if (pid < 0) {
         fprintf(stderr, "Fork Failed\n");
-        return 1;
+        //return 1;
     }
     else if (pid == 0) {
         execlp("/bin/ls", "ls", NULL);
