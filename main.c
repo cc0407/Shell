@@ -3,8 +3,7 @@
 pidNode* pidList;
 int pidAmt;
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
     printf("Welcome!\n");
     inputLoop();
 
@@ -68,21 +67,30 @@ void inputLoop() {
     }
 }
 
-void exitShell() {
-    pidNode* currNode;
-    printf("myShell terminating...\n");
+int newSynchronousProcess(char* command, char ** args) {
+    pid_t pid;
+    int status;
+    
+    pid = fork();
+    //printf("PID: %d, %s\n", pid, command);
 
-    // Iteratively kills all active processes
-    while( pidList != NULL ) {
-        //printf("pid: %d\n", pidList->pid);
-        kill(pidList->pid, SIGKILL);
-        currNode = pidList;
-        pidList = pidList->next;
-        freeNode(currNode);
+    if (pid < 0) {
+        fprintf(stderr, "Fork Failed\n");
+        return 1;
+    }
+    else if (pid == 0) {
+        //printf("Executing %s\n", command);
+        if (execvp(command, args) == -1) {
+            fprintf(stderr, "Command Failed\n");
+            exit(1);
+        }
+    }
+    else {
+        wait(&status);
+        printf("Child Complete\n");
     }
 
-    printf("[Process completed]\n");
-    exit(EXIT_SUCCESS);
+    return 0;
 }
 
 char* readInputLine() { //TODO TRIM INPUT
@@ -90,7 +98,7 @@ char* readInputLine() { //TODO TRIM INPUT
     char* buffer;
     int charAmt = 0;
     char c;
-    
+
     // Allocate initial buffer
     buffer = malloc(bufferLen * sizeof(char));
     c = getchar();
@@ -107,30 +115,21 @@ char* readInputLine() { //TODO TRIM INPUT
     return buffer;
 }
 
-int newSynchronousProcess(char* command, char ** args) {
-    pid_t pid;
-    int status;
-    
-    pid = fork();
-    //printf("PID: %d, %s\n", pid, command);
+void exitShell() {
+    pidNode* currNode;
+    printf("myShell terminating...\n");
 
-    if (pid < 0) {
-        fprintf(stderr, "Fork Failed\n");
-        return 1;
-    }
-    else if (pid == 0) {
-        printf("Executing %s\n", command);
-        if (execvp(command, args) == -1) {
-            fprintf(stderr, "Command Failed\n");
-            exit(1);
-        }
-    }
-    else {
-        wait(&status);
-        printf("Child Complete\n");
+    // Iteratively kills all active processes
+    while( pidList != NULL ) {
+        //printf("pid: %d\n", pidList->pid);
+        kill(pidList->pid, SIGKILL);
+        currNode = pidList;
+        pidList = pidList->next;
+        freeNode(currNode);
     }
 
-    return 0;
+    printf("[Process completed]\n");
+    exit(EXIT_SUCCESS);
 }
 
 void testLinkedList() {
