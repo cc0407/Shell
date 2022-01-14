@@ -1,5 +1,6 @@
 #include "main.h"
 
+//TODO THIS DOESNT REALLY WORK THE WAY I THINK IT DOES, GLOBAL VARIABLES ARE NOT SHARED BETWEEN TWO PROCESSES
 pidNode* pidList;
 int pidAmt;
 
@@ -17,17 +18,30 @@ void inputLoop() {
     char** args;
     int numArgs;
     char* token;
+    int background;
 
+    //for killing zombies
+    pid_t asyncPID;
+    int status;
 
     while(1) {
         args = NULL;
         numArgs = 0;
         token = NULL;
+        background = 0;
+
 
         printf("> ");
         inBuffer = readInputLine();
         inputCopy = inBuffer;
 
+        // Kill any completed background processes
+        asyncPID = waitpid(-1, &status, WNOHANG);
+        if( asyncPID > 0) {
+            printf("async process completed, killed: %d\n", asyncPID);
+        }
+
+        // Internal shell commands
         if( strcmp(inBuffer, "exit") == 0 ) {
             free( inputCopy );
             exitShell();
@@ -37,7 +51,13 @@ void inputLoop() {
         token = strtok_r(inBuffer, " ", &inBuffer);
         while (token != NULL) {
             //printf("token: %s\n", token);
-            numArgs++;
+
+            // Check if background flag was given
+            if( strcmp(token, "&") == 0 ) {
+                background = 1;
+                token = strtok_r(inBuffer, " ", &inBuffer);
+                continue;
+            }
 
             // arg list is empty, must malloc first
             if( args == NULL ) {
@@ -48,31 +68,35 @@ void inputLoop() {
             }
 
             // allocate space for new arg
-            args[numArgs - 1] = (char*)(malloc( sizeof(char) * strlen(token) ));
-            strcpy(args[numArgs - 1], token);
+            args[numArgs] = (char*)(malloc( sizeof(char) * strlen(token) ));
+            strcpy(args[numArgs], token);
+
             token = strtok_r(inBuffer, " ", &inBuffer);
+            numArgs++;
         }
+
         // Add null terminated pointer to end of arg list
         args = (char**)realloc(args, ++numArgs * sizeof(char*));
         args[numArgs - 1] = NULL;
         
+
         //TODO DEBUGGING
         for(int i = 0; i < numArgs; i++) {
             printf("[%s]", args[i]);
         }
         printf("\n");
 
-        newSynchronousProcess(args[0], args);
+        newProcess(args[0], args, background);
         free( inputCopy );
     }
 }
 
-int newSynchronousProcess(char* command, char ** args) {
+int newProcess(char* command, char ** args, int bg) {
     pid_t pid;
     int status;
     
     pid = fork();
-    //printf("PID: %d, %s\n", pid, command);
+    printf("PID: %d, %s\n", pid, command);
 
     if (pid < 0) {
         fprintf(stderr, "Fork Failed\n");
@@ -82,11 +106,11 @@ int newSynchronousProcess(char* command, char ** args) {
         //printf("Executing %s\n", command);
         if (execvp(command, args) == -1) {
             fprintf(stderr, "Command Failed\n");
-            exit(1);
         }
+        exit(1);
     }
-    else {
-        wait(&status);
+    else if (!bg) {
+        waitpid(pid, &status, 0);
         printf("Child Complete\n");
     }
 
