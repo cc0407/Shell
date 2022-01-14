@@ -15,12 +15,16 @@ void inputLoop() {
     char* inBuffer = NULL;
     char* inputCopy; // For freeing
     //char* command;
-    char** args = NULL;
+    char** args;
     int numArgs;
     char* token;
 
 
     while(1) {
+        args = NULL;
+        numArgs = 0;
+        token = NULL;
+
         printf("> ");
         inBuffer = readInputLine();
         inputCopy = inBuffer;
@@ -30,10 +34,10 @@ void inputLoop() {
             exitShell();
         }
 
-        //TODO SOMETHING IS VERY WRONG HERE AND IS INF LOOPING
         // Grab optional args from inBuffer
         token = strtok_r(inBuffer, " ", &inBuffer);
         while (token != NULL) {
+            //printf("token: %s\n", token);
             numArgs++;
 
             // arg list is empty, must malloc first
@@ -47,11 +51,18 @@ void inputLoop() {
             // allocate space for new arg
             args[numArgs - 1] = (char*)(malloc( sizeof(char) * strlen(token) ));
             strcpy(args[numArgs - 1], token);
+            token = strtok_r(inBuffer, " ", &inBuffer);
         }
         // Add null terminated pointer to end of arg list
         args = (char**)realloc(args, ++numArgs * sizeof(char*));
         args[numArgs - 1] = NULL;
         
+        //TODO DEBUGGING
+        for(int i = 0; i < numArgs; i++) {
+            printf("[%s]", args[i]);
+        }
+        printf("\n");
+
         newSynchronousProcess(args[0], args);
         free( inputCopy );
     }
@@ -74,11 +85,12 @@ void exitShell() {
     exit(EXIT_SUCCESS);
 }
 
-char* readInputLine() {
+char* readInputLine() { //TODO TRIM INPUT
     int bufferLen = 100;
     char* buffer;
     int charAmt = 0;
     char c;
+    
     // Allocate initial buffer
     buffer = malloc(bufferLen * sizeof(char));
     c = getchar();
@@ -98,27 +110,26 @@ char* readInputLine() {
 int newSynchronousProcess(char* command, char ** args) {
     pid_t pid;
     int status;
-    char* newCommand = malloc(sizeof(char) * (strlen(command) + 5));
-    strcpy(newCommand, "/bin/");
-    strcat(newCommand, command);
-    printf("%s\n", newCommand);
-
+    
     pid = fork();
+    //printf("PID: %d, %s\n", pid, command);
 
     if (pid < 0) {
         fprintf(stderr, "Fork Failed\n");
-        free(newCommand);
         return 1;
     }
     else if (pid == 0) {
-        execvp(newCommand, args);
+        printf("Executing %s\n", command);
+        if (execvp(command, args) == -1) {
+            fprintf(stderr, "Command Failed\n");
+            exit(1);
+        }
     }
     else {
         wait(&status);
         printf("Child Complete\n");
     }
 
-    free(newCommand);
     return 0;
 }
 
