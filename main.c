@@ -18,7 +18,7 @@ void inputLoop() {
     char** args;
     int numArgs;
     char* token;
-    int background;
+    int background; 
 
     //for killing zombies
     pid_t asyncPID;
@@ -61,14 +61,14 @@ void inputLoop() {
 
             // arg list is empty, must malloc first
             if( args == NULL ) {
-                args = (char**)calloc(0, numArgs * sizeof(char*));
+                args = (char**)calloc(1, sizeof(char*));
             }
             else {
-                args = (char**)realloc(args, numArgs * sizeof(char*));
+                args = (char**)realloc(args, (numArgs + 1) * sizeof(char*));
             }
 
             // allocate space for new arg
-            args[numArgs] = (char*)(malloc( sizeof(char) * strlen(token) ));
+            args[numArgs] = (char*)(malloc( (strlen(token) + 1) * sizeof(char) ));
             strcpy(args[numArgs], token);
 
             token = strtok_r(inBuffer, " ", &inBuffer);
@@ -87,7 +87,11 @@ void inputLoop() {
         printf("\n");
 
         newProcess(args[0], args, background);
+
+        // Free the added null 
+        //free(args[numArgs - 1]);
         free( inputCopy );
+        freeArgs(args, numArgs);
     }
 }
 
@@ -96,7 +100,7 @@ int newProcess(char* command, char ** args, int bg) {
     int status;
     
     pid = fork();
-    printf("PID: %d, %s\n", pid, command);
+    //printf("PID: %d, %s\n", pid, command);
 
     if (pid < 0) {
         fprintf(stderr, "Fork Failed\n");
@@ -124,7 +128,7 @@ char* readInputLine() { //TODO TRIM INPUT
     char c;
 
     // Allocate initial buffer
-    buffer = malloc(bufferLen * sizeof(char));
+    buffer = calloc(bufferLen, bufferLen * sizeof(char));
     c = getchar();
 
     while( c != '\n' && c != EOF) {
