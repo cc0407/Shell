@@ -1,6 +1,5 @@
 #include "main.h"
 
-//TODO THIS DOESNT REALLY WORK THE WAY I THINK IT DOES, GLOBAL VARIABLES ARE NOT SHARED BETWEEN TWO PROCESSES
 pidNode* pidList;
 int pidAmt;
 
@@ -14,7 +13,6 @@ int main(int argc, char* argv[]) {
 void inputLoop() {
     char* inBuffer = NULL;
     char* inputCopy; // For freeing
-    //char* command;
     char** args;
     int numArgs;
     char* token;
@@ -38,6 +36,7 @@ void inputLoop() {
         // Kill any completed background processes
         asyncPID = waitpid(-1, &status, WNOHANG);
         if( asyncPID > 0) {
+            removeFromList( asyncPID );
             printf("async process completed, killed: %d\n", asyncPID);
         }
 
@@ -88,8 +87,6 @@ void inputLoop() {
 
         newProcess(args[0], args, background);
 
-        // Free the added null 
-        //free(args[numArgs - 1]);
         free( inputCopy );
         freeArgs(args, numArgs);
     }
@@ -101,6 +98,7 @@ int newProcess(char* command, char ** args, int bg) {
     
     pid = fork();
     //printf("PID: %d, %s\n", pid, command);
+    addToList( pid );
 
     if (pid < 0) {
         fprintf(stderr, "Fork Failed\n");
@@ -115,6 +113,7 @@ int newProcess(char* command, char ** args, int bg) {
     }
     else if (!bg) {
         waitpid(pid, &status, 0);
+        removeFromList( pid );
         printf("Child Complete\n");
     }
 
@@ -145,16 +144,18 @@ char* readInputLine() { //TODO TRIM INPUT
 
 void exitShell() {
     pidNode* currNode;
-    printf("myShell terminating...\n");
 
     // Iteratively kills all active processes
     while( pidList != NULL ) {
-        //printf("pid: %d\n", pidList->pid);
+        printf("pid: %d\n", pidList->pid);
         kill(pidList->pid, SIGKILL);
         currNode = pidList;
         pidList = pidList->next;
         freeNode(currNode);
     }
+    
+
+    printf("myShell terminating...\n");
 
     printf("[Process completed]\n");
     exit(EXIT_SUCCESS);
@@ -259,6 +260,7 @@ void freeNode(pidNode* node) {
     free(node);
     pidAmt--;
 }
+
 
 void freeArgs( char* args[], int numArgs ) {
     for( int i = 0; i < numArgs; i++ ) {
