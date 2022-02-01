@@ -14,20 +14,27 @@ void inputLoop() {
     char* inBuffer = NULL;
     char* inputCopy; // For freeing
     char** args;
+    char* filename;
     int numArgs;
     char* token;
     int background; 
+    int out;
+    int in;
+    int successfulRead;
 
     //for killing zombies
     pid_t asyncPID;
     int status;
 
     while(1) {
+        successfulRead = 1; // If there are syntax errors in line, this is 0
         args = NULL;
         numArgs = 0;
         token = NULL;
+        filename = NULL;
         background = 0;
-
+        out = 0;
+        in = 0;
 
         printf("> ");
         inBuffer = readInputLine();
@@ -58,6 +65,26 @@ void inputLoop() {
                 continue;
             }
 
+            // Check if redirect output flag + filename were given
+            if( strcmp(token, ">") == 0) {
+                // Validate that filename was also provided
+                token = strtok_r(inBuffer, " ", &inBuffer);
+                if (token == NULL) {
+                    printf("Redirect Error, no filename provided.\n");
+                    successfulRead = 0;
+                    break;
+                }
+                // Filename was provided
+                else{
+                    filename = (char*)(malloc( (strlen(token) + 1) * sizeof(char) ));
+                    strcpy(filename, token);
+                    token = strtok_r(inBuffer, " ", &inBuffer);
+
+                    out = 1;
+                    continue;
+                }
+            }
+
             // arg list is empty, must malloc first
             if( args == NULL ) {
                 args = (char**)calloc(1, sizeof(char*));
@@ -74,28 +101,34 @@ void inputLoop() {
             numArgs++;
         }
 
-        // Add null terminated pointer to end of arg list
-        args = (char**)realloc(args, ++numArgs * sizeof(char*));
-        args[numArgs - 1] = NULL;
-        
+        if( successfulRead ) {
+            // Add null terminated pointer to end of arg list
+            args = (char**)realloc(args, ++numArgs * sizeof(char*));
+            args[numArgs - 1] = NULL;
+            
 
-        //TODO DEBUGGING
-        for(int i = 0; i < numArgs; i++) {
-            printf("[%s]", args[i]);
+            //TODO DEBUGGING
+            for(int i = 0; i < numArgs; i++) {
+                printf("[%s]", args[i]);
+            }
+            printf("\n");
+
+            newProcess(args[0], args, background, out, in, filename);
         }
-        printf("\n");
-
-        newProcess(args[0], args, background);
-
+        if(filename != NULL) {
+            free(filename);
+        }
         free( inputCopy );
         freeArgs(args, numArgs);
     }
 }
 
-int newProcess(char* command, char ** args, int bg) {
+int newProcess(char* command, char ** args, int bg, int out, int in, char* filename) {
     pid_t pid;
     int status;
-    
+    int IOFlag = 0; // 0 for nothing, 1 for output, 2 for input. Different than params because this is only changed if filename is not empty
+    FILE* file;
+
     pid = fork();
     //printf("PID: %d, %s\n", pid, command);
     addToList( pid );
@@ -104,10 +137,35 @@ int newProcess(char* command, char ** args, int bg) {
         fprintf(stderr, "Fork Failed\n");
         return 1;
     }
-    else if (pid == 0) {
+
+
+    // Handling ">" and "<"
+    if( out && pid == 0) {
+        if((filename != NULL)) {
+            file = freopen(filename, "w+", stdout);
+            IOFlag = 1;
+        }
+        else{
+            exit(1);
+        }
+    }   
+    else if( in && pid == 0) {
+        if((filename != NULL)) {
+            //file = freopen(filename, "w+", stdout);
+            IOFlag = 2;
+        }
+        else{
+            exit(1);
+        }
+    }
+
+    if (pid == 0) {
         //printf("Executing %s\n", command);
         if (execvp(command, args) == -1) {
             fprintf(stderr, "Command Failed\n");
+        }
+        if( IOFlag != 0 ) {
+            fclose(file);
         }
         exit(1);
     }

@@ -17,7 +17,7 @@ typedef struct pidNode_struct {
 } pidNode;
 
 void inputLoop();
-int newProcess(char* command, char ** args, int bg);
+int newProcess(char* command, char ** args, int bg, int out, int in, char* filename);
 char* readInputLine();
 void exitShell();
 void freeArgs(char ** args, int numArgs);
