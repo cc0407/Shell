@@ -21,7 +21,7 @@ void inputLoop() {
     int background; 
     int out;
     int in;
-    int successfulRead;
+    int successfulParse;
 
     //for killing zombies
     pid_t asyncPID;
@@ -31,7 +31,6 @@ void inputLoop() {
     char* foundIndex;
 
     while(1) {
-        successfulRead = 1; // If there are syntax errors while parsing, this turns to 0
         args = NULL;
         numArgs = 0;
         token = NULL;
@@ -58,103 +57,28 @@ void inputLoop() {
             free( inputCopy );
             exitShell();
         }
+        
+        // Parsing input redirection
+        successfulParse = parseIORedir(&in, inputCopy, &inFile, '<');
+        if( successfulParse == -1 ) {
+            perror("Syntax error on input redirection\n");
+            free( inputCopy );
+            continue;
+        }
+
+        // Parsing output redirection
+        successfulParse = parseIORedir(&out, inputCopy, &outFile, '>');
+        if( successfulParse == -1 ) {
+            perror("Syntax error on output redirection\n");
+            free( inputCopy );
+            continue;
+        }
 
         // Grab optional args from inBuffer
         token = strtok_r(inBuffer, " ", &inBuffer);
         while (token != NULL) {
             printf("{%s}\n", token);
-            printf("a\n");
-            
-            // Check if '>' + filename were given
-            if( (foundIndex = strchr(token, '>')) != NULL) {
-                // '>' was provided but no space (i.e. ">test.txt") and its not at the end (i.e. "ls> test.txt")
-                if(strlen(token) > 1) {
-                    if (*foundIndex != token[0]) { // '>' is not at beginning (i.e. "ls>test.txt")
-                        *foundIndex = '\0';
-                    }
-                    outFile = (char*)(malloc( (strlen(foundIndex+1) + 1) * sizeof(char) ));
-                    strcpy(outFile, foundIndex+1);
-                    out = 1;
-                    if (*foundIndex == token[0]) { // '>' is at beginning (i.e. "ls>test.txt")
-                        token = strtok_r(inBuffer, " ", &inBuffer);
-                        continue;
-                    }
-                }
-                else{
-                    // '>' was provided isolated (i.e. "ls > test"), checks if filename was provided after (i.e. "> test.txt")
-                    token = strtok_r(inBuffer, " ", &inBuffer);
-                    if (token == NULL) { // Filename not provided
-                        printf("Redirect Error, no filename provided.\n");
-                        successfulRead = 0;
-                        break;
-                    }
-                    else{ // Filename was provided
-                        outFile = (char*)(malloc( (strlen(token) + 1) * sizeof(char) ));
-                        strcpy(outFile, token);
-                        token = strtok_r(inBuffer, " ", &inBuffer);
 
-                        out = 1;
-                        continue;
-                    }
-                }
-            }
-            printf("g\n");
-            // Check if '<' + filename were given
-            if( (foundIndex = strchr(token, '<')) != NULL) {
-                // This '<' is not the first '<' to be parsed
-                if( in ) {
-                    perror("Syntax error: multiple input redirections\n");
-                    successfulRead = 0;
-                    break;
-                }
-
-                // '<' was provided but no space (i.e. "<test.txt") and its not at the end (i.e. "ls< test.txt")
-                if(strlen(token) > 1) {
-                    // '<' is not at beginning (i.e. "ls<test.txt")
-                    if (*foundIndex != token[0]) { 
-                        *foundIndex = '\0';
-                    }
-
-                    inFile = (char*)(malloc( (strlen(foundIndex+1) + 1) * sizeof(char) ));
-                    strcpy(inFile, foundIndex+1);
-                    in = 1;
-
-                    // '<' is at beginning (i.e. "ls<test.txt")
-                    if (*foundIndex == token[0]) { 
-
-                        //check if there are more redirects in this statement
-                        if(strchr(foundIndex + 1, '<') != NULL || strchr(foundIndex + 1, '>') != NULL) {
-                            token++;
-                            continue;
-                        }
-                        else {
-                            token = strtok_r(inBuffer, " ", &inBuffer);
-                            continue;
-                        }
-                        
-                    }
-                }
-                // '<' was provided isolated (i.e. "ls < test"), checks if filename was provided after (i.e. "< test.txt")
-                else{
-                    token = strtok_r(inBuffer, " ", &inBuffer);
-
-                    // Filename not provided
-                    if (token == NULL) { 
-                        printf("Redirect Error, no filename provided.\n");
-                        successfulRead = 0;
-                        break;
-                    }
-                    // Filename was provided
-                    else{ 
-                        inFile = (char*)(malloc( (strlen(token) + 1) * sizeof(char) ));
-                        strcpy(inFile, token);
-                        token = strtok_r(inBuffer, " ", &inBuffer);
-                        in = 1;
-                        continue;
-                    }
-                }
-            }
-            printf("h\n");
             // arg list is empty, must malloc first
             if( args == NULL ) {
                 args = (char**)calloc(1, sizeof(char*));
@@ -178,26 +102,31 @@ void inputLoop() {
             free(args[numArgs - 1]);
             args = (char**)realloc(args, --numArgs * sizeof(char*));
         }
-        if( successfulRead ) {
-            // Add null terminated pointer to end of arg list
-            args = (char**)realloc(args, ++numArgs * sizeof(char*));
-            args[numArgs - 1] = NULL;
-            
 
-            //TODO DEBUGGING
-            for(int i = 0; i < numArgs; i++) {
-                printf("[%s]", args[i]);
-            }
-            printf("\n");
+        // Add null terminated pointer to end of arg list
+        args = (char**)realloc(args, ++numArgs * sizeof(char*));
+        args[numArgs - 1] = NULL;
+        
 
-            newProcess(args[0], args, background, out, in, outFile, inFile);
+        //TODO DEBUGGING
+        for(int i = 0; i < numArgs; i++) {
+            printf("[%s]", args[i]);
+        }
+        printf("\n");
+
+        printf("I/0/IF/OF?: %d/%d", in, out);
+        if(inFile!=NULL){printf("/%s", inFile);};
+        if(outFile!=NULL){printf("/%s", outFile);};
+        printf("\n");
+        newProcess(args[0], args, background, out, in, outFile, inFile);
+
+        if(inFile != NULL) {
+            free(inFile);
         }
         if(outFile != NULL) {
             free(outFile);
         }
-        if(inFile != NULL) {
-            free(inFile);
-        }
+        
         free( inputCopy );
         freeArgs(args, numArgs);
     }
@@ -223,10 +152,6 @@ int newProcess(char* command, char ** args, int bg, int out, int in, char* outFi
     // Handling ">" and "<"
     if( out && pid == 0) {
         if((outFile != NULL)) {
-            // file = freopen(outFile, "w+", stdout);
-            // if(file == NULL) {
-            //     perror("output file: no such file or directory\n");
-            // }
             fd = open(outFile, O_WRONLY | O_CREAT, 0777);
             if( fd < 0 ) {
                 perror("output file: no such file or directory\n");
@@ -262,9 +187,6 @@ int newProcess(char* command, char ** args, int bg, int out, int in, char* outFi
         if (execvp(command, args) == -1) {
             perror("Command Failed\n");
         }
-        // if( IOFlag == 1 ) {
-        //     fclose(file);
-        // }
         exit(1);
     }
     else if (!bg) {
@@ -316,6 +238,84 @@ void exitShell() {
     printf("[Process completed]\n");
     exit(EXIT_SUCCESS);
 }
+
+
+int parseIORedir(int* flag, char* input, char** filename, char key) {
+    char* foundIndex;
+
+    if( (foundIndex = strchr(input, key)) != NULL) {
+        // more than one key provided
+        if( strchr(foundIndex+1, key) != NULL ) {
+            printf("no2\n");
+            return -1;
+        }
+        
+        // key is final character, no filename provided
+        if(*foundIndex == input[strlen(input) - 1]) {
+            printf("no1\n");
+            return -1;
+        }
+
+        *foundIndex = ' ';
+        *filename = findFilename(foundIndex+1);
+
+        if(strlen(*filename) == 0) {
+            printf("no3\n");
+            return -1;
+        }
+
+        clearString(foundIndex, strlen(*filename));
+        *flag = 1;
+        return 1;
+    }
+
+    printf("no4\n");
+    *flag = 0;
+    return 0;
+}
+
+void clearString(char* string, int amt){
+
+    if(amt > strlen(string)) {
+        amt = strlen(string);
+    }
+
+    // trimming input
+    while(*(string) == ' ') {
+        *string++;
+    }
+
+    for(int i = 0; i < amt; i++) {
+        string[i] = ' ';
+    }
+
+}
+
+char* findFilename(char* string) {
+    char* filename;
+    int count;
+    char blocklist[13] = {'\0', ' ', '>', '<', ',', '&', '/', '\\', ':', '*', '?', '"', '|'};
+    filename = (char*)(malloc(1 * sizeof(char) ));
+    *filename = '\0';
+    count = 1;
+
+    // trimming input
+    while(*(string) == ' ') {
+        *string++;
+    }
+
+    for(int i = 0; i < strlen(string); i++) {
+        for(int j = 0; j < 13; j++) {
+            if(string[i] == blocklist[j]) {
+                return filename;
+            }
+        }
+        filename = (char*)realloc(filename, ++count);
+        strncat(filename, string + i, 1);
+    }
+    return filename;
+}
+
 
 void testLinkedList() {
     addToList(1);

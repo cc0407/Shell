@@ -22,6 +22,9 @@ int newProcess(char* command, char ** args, int bg, int out, int in, char* outFi
 char* readInputLine();
 void exitShell();
 void freeArgs(char ** args, int numArgs);
+int parseIORedir(int* flag, char* input, char** filename, char key);
+void clearString(char* string, int amt);
+char* findFilename(char* string);
 
 void testLinkedList();
 void addToList( int pid );
