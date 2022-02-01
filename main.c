@@ -68,7 +68,7 @@ void inputLoop() {
                     if (*foundIndex != token[0]) { // '>' is not at beginning (i.e. "ls>test.txt")
                         *foundIndex = '\0';
                     }
-                    filename = (char*)(malloc( (strlen(token)) * sizeof(char) ));
+                    filename = (char*)(malloc( (strlen(foundIndex+1) + 1) * sizeof(char) ));
                     strcpy(filename, foundIndex+1);
                     out = 1;
                     if (*foundIndex == token[0]) { // '>' is not at beginning (i.e. "ls>test.txt")
