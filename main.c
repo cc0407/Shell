@@ -31,7 +31,7 @@ void inputLoop() {
     char* foundIndex;
 
     while(1) {
-        successfulRead = 1; // If there are syntax errors in line, this is 0
+        successfulRead = 1; // If there are syntax errors while parsing, this turns to 0
         args = NULL;
         numArgs = 0;
         token = NULL;
@@ -41,6 +41,7 @@ void inputLoop() {
         out = 0;
         in = 0;
 
+        // wait for user input
         printf("> ");
         inBuffer = readInputLine();
         inputCopy = inBuffer;
@@ -61,9 +62,10 @@ void inputLoop() {
         // Grab optional args from inBuffer
         token = strtok_r(inBuffer, " ", &inBuffer);
         while (token != NULL) {
-            //printf("token: %s\n", token);
-
-            // Check if redirect output flag + filename were given
+            printf("{%s}\n", token);
+            printf("a\n");
+            
+            // Check if '>' + filename were given
             if( (foundIndex = strchr(token, '>')) != NULL) {
                 // '>' was provided but no space (i.e. ">test.txt") and its not at the end (i.e. "ls> test.txt")
                 if(strlen(token) > 1) {
@@ -96,31 +98,54 @@ void inputLoop() {
                     }
                 }
             }
-
-            // Check if redirect input flag + filename were given
+            printf("g\n");
+            // Check if '<' + filename were given
             if( (foundIndex = strchr(token, '<')) != NULL) {
+                // This '<' is not the first '<' to be parsed
+                if( in ) {
+                    perror("Syntax error: multiple input redirections\n");
+                    successfulRead = 0;
+                    break;
+                }
+
                 // '<' was provided but no space (i.e. "<test.txt") and its not at the end (i.e. "ls< test.txt")
                 if(strlen(token) > 1) {
-                    if (*foundIndex != token[0]) { // '<' is not at beginning (i.e. "ls<test.txt")
+                    // '<' is not at beginning (i.e. "ls<test.txt")
+                    if (*foundIndex != token[0]) { 
                         *foundIndex = '\0';
                     }
+
                     inFile = (char*)(malloc( (strlen(foundIndex+1) + 1) * sizeof(char) ));
                     strcpy(inFile, foundIndex+1);
                     in = 1;
-                    if (*foundIndex == token[0]) { // '<' is at beginning (i.e. "ls<test.txt")
-                        token = strtok_r(inBuffer, " ", &inBuffer);
-                        continue;
+
+                    // '<' is at beginning (i.e. "ls<test.txt")
+                    if (*foundIndex == token[0]) { 
+
+                        //check if there are more redirects in this statement
+                        if(strchr(foundIndex + 1, '<') != NULL || strchr(foundIndex + 1, '>') != NULL) {
+                            token++;
+                            continue;
+                        }
+                        else {
+                            token = strtok_r(inBuffer, " ", &inBuffer);
+                            continue;
+                        }
+                        
                     }
                 }
+                // '<' was provided isolated (i.e. "ls < test"), checks if filename was provided after (i.e. "< test.txt")
                 else{
-                    // '<' was provided isolated (i.e. "ls < test"), checks if filename was provided after (i.e. "< test.txt")
                     token = strtok_r(inBuffer, " ", &inBuffer);
-                    if (token == NULL) { // Filename not provided
+
+                    // Filename not provided
+                    if (token == NULL) { 
                         printf("Redirect Error, no filename provided.\n");
                         successfulRead = 0;
                         break;
                     }
-                    else{ // Filename was provided
+                    // Filename was provided
+                    else{ 
                         inFile = (char*)(malloc( (strlen(token) + 1) * sizeof(char) ));
                         strcpy(inFile, token);
                         token = strtok_r(inBuffer, " ", &inBuffer);
@@ -129,19 +154,21 @@ void inputLoop() {
                     }
                 }
             }
-
+            printf("h\n");
             // arg list is empty, must malloc first
             if( args == NULL ) {
                 args = (char**)calloc(1, sizeof(char*));
             }
+            // realloc space for new argument
             else {
                 args = (char**)realloc(args, (numArgs + 1) * sizeof(char*));
             }
 
-            // allocate space for new arg
+            // allocate new arg string
             args[numArgs] = (char*)(malloc( (strlen(token) + 1) * sizeof(char) ));
             strcpy(args[numArgs], token);
 
+            // parse next token
             token = strtok_r(inBuffer, " ", &inBuffer);
             numArgs++;
         }
