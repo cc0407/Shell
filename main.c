@@ -14,7 +14,8 @@ void inputLoop() {
     char* inBuffer = NULL;
     char* inputCopy; // For freeing
     char** args;
-    char* filename;
+    char* inFile;
+    char* outFile;
     int numArgs;
     char* token;
     int background; 
@@ -34,7 +35,8 @@ void inputLoop() {
         args = NULL;
         numArgs = 0;
         token = NULL;
-        filename = NULL;
+        outFile = NULL;
+        inFile = NULL;
         background = 0;
         out = 0;
         in = 0;
@@ -68,10 +70,10 @@ void inputLoop() {
                     if (*foundIndex != token[0]) { // '>' is not at beginning (i.e. "ls>test.txt")
                         *foundIndex = '\0';
                     }
-                    filename = (char*)(malloc( (strlen(foundIndex+1) + 1) * sizeof(char) ));
-                    strcpy(filename, foundIndex+1);
+                    outFile = (char*)(malloc( (strlen(foundIndex+1) + 1) * sizeof(char) ));
+                    strcpy(outFile, foundIndex+1);
                     out = 1;
-                    if (*foundIndex == token[0]) { // '>' is not at beginning (i.e. "ls>test.txt")
+                    if (*foundIndex == token[0]) { // '>' is at beginning (i.e. "ls>test.txt")
                         token = strtok_r(inBuffer, " ", &inBuffer);
                         continue;
                     }
@@ -85,11 +87,44 @@ void inputLoop() {
                         break;
                     }
                     else{ // Filename was provided
-                        filename = (char*)(malloc( (strlen(token) + 1) * sizeof(char) ));
-                        strcpy(filename, token);
+                        outFile = (char*)(malloc( (strlen(token) + 1) * sizeof(char) ));
+                        strcpy(outFile, token);
                         token = strtok_r(inBuffer, " ", &inBuffer);
 
                         out = 1;
+                        continue;
+                    }
+                }
+            }
+
+            // Check if redirect input flag + filename were given
+            if( (foundIndex = strchr(token, '<')) != NULL) {
+                // '<' was provided but no space (i.e. "<test.txt") and its not at the end (i.e. "ls< test.txt")
+                if(strlen(token) > 1) {
+                    if (*foundIndex != token[0]) { // '<' is not at beginning (i.e. "ls<test.txt")
+                        *foundIndex = '\0';
+                    }
+                    inFile = (char*)(malloc( (strlen(foundIndex+1) + 1) * sizeof(char) ));
+                    strcpy(inFile, foundIndex+1);
+                    in = 1;
+                    if (*foundIndex == token[0]) { // '<' is at beginning (i.e. "ls<test.txt")
+                        token = strtok_r(inBuffer, " ", &inBuffer);
+                        continue;
+                    }
+                }
+                else{
+                    // '<' was provided isolated (i.e. "ls < test"), checks if filename was provided after (i.e. "< test.txt")
+                    token = strtok_r(inBuffer, " ", &inBuffer);
+                    if (token == NULL) { // Filename not provided
+                        printf("Redirect Error, no filename provided.\n");
+                        successfulRead = 0;
+                        break;
+                    }
+                    else{ // Filename was provided
+                        inFile = (char*)(malloc( (strlen(token) + 1) * sizeof(char) ));
+                        strcpy(inFile, token);
+                        token = strtok_r(inBuffer, " ", &inBuffer);
+                        in = 1;
                         continue;
                     }
                 }
@@ -128,45 +163,66 @@ void inputLoop() {
             }
             printf("\n");
 
-            newProcess(args[0], args, background, out, in, filename);
+            newProcess(args[0], args, background, out, in, outFile, inFile);
         }
-        if(filename != NULL) {
-            free(filename);
+        if(outFile != NULL) {
+            free(outFile);
+        }
+        if(inFile != NULL) {
+            free(inFile);
         }
         free( inputCopy );
         freeArgs(args, numArgs);
     }
 }
 
-int newProcess(char* command, char ** args, int bg, int out, int in, char* filename) {
+int newProcess(char* command, char ** args, int bg, int out, int in, char* outFile, char* inFile) {
     pid_t pid;
     int status;
     int IOFlag = 0; // 0 for nothing, 1 for output, 2 for input. Different than params because this is only changed if filename is not empty
     FILE* file;
+    int fd;
 
     pid = fork();
     //printf("PID: %d, %s\n", pid, command);
     addToList( pid );
 
     if (pid < 0) {
-        fprintf(stderr, "Fork Failed\n");
+        perror("Fork Failed\n");
         return 1;
     }
 
 
     // Handling ">" and "<"
     if( out && pid == 0) {
-        if((filename != NULL)) {
-            file = freopen(filename, "w+", stdout);
+        if((outFile != NULL)) {
+            // file = freopen(outFile, "w+", stdout);
+            // if(file == NULL) {
+            //     perror("output file: no such file or directory\n");
+            // }
+            fd = open(outFile, O_WRONLY | O_CREAT, 0777);
+            if( fd < 0 ) {
+                perror("output file: no such file or directory\n");
+                exit(1);
+            }
+            dup2(fd, STDOUT_FILENO);
+            close(fd);
             IOFlag = 1;
         }
         else{
             exit(1);
         }
     }   
-    else if( in && pid == 0) {
-        if((filename != NULL)) {
-            //file = freopen(filename, "w+", stdout);
+    
+    if( in && pid == 0) {
+        if((inFile != NULL)) {
+            fd = open(inFile, O_RDONLY, 0);
+            if(fd < 0) {
+                perror("input file: no such file or directory\n");
+                exit(1);
+            }
+            dup2(fd, STDIN_FILENO);
+            close(fd);
             IOFlag = 2;
         }
         else{
@@ -177,11 +233,11 @@ int newProcess(char* command, char ** args, int bg, int out, int in, char* filen
     if (pid == 0) {
         //printf("Executing %s\n", command);
         if (execvp(command, args) == -1) {
-            fprintf(stderr, "Command Failed\n");
+            perror("Command Failed\n");
         }
-        if( IOFlag != 0 ) {
-            fclose(file);
-        }
+        // if( IOFlag == 1 ) {
+        //     fclose(file);
+        // }
         exit(1);
     }
     else if (!bg) {

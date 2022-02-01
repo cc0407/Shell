@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <string.h>
+#include <fcntl.h>
 
 typedef struct pidNode_struct {
     int pid;
@@ -17,7 +18,7 @@ typedef struct pidNode_struct {
 } pidNode;
 
 void inputLoop();
-int newProcess(char* command, char ** args, int bg, int out, int in, char* filename);
+int newProcess(char* command, char ** args, int bg, int out, int in, char* outFile, char* inFile);
 char* readInputLine();
 void exitShell();
 void freeArgs(char ** args, int numArgs);
