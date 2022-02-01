@@ -26,6 +26,9 @@ void inputLoop() {
     pid_t asyncPID;
     int status;
 
+    //for finding > and <
+    char* foundIndex;
+
     while(1) {
         successfulRead = 1; // If there are syntax errors in line, this is 0
         args = NULL;
@@ -44,7 +47,7 @@ void inputLoop() {
         asyncPID = waitpid(-1, &status, WNOHANG);
         if( asyncPID > 0) {
             removeFromList( asyncPID );
-            printf("async process completed, killed: %d\n", asyncPID);
+            printf("Done            : %d\n", asyncPID);
         }
 
         // Internal shell commands
@@ -58,30 +61,37 @@ void inputLoop() {
         while (token != NULL) {
             //printf("token: %s\n", token);
 
-            // Check if background flag was given
-            if( strcmp(token, "&") == 0 ) {
-                background = 1;
-                token = strtok_r(inBuffer, " ", &inBuffer);
-                continue;
-            }
-
             // Check if redirect output flag + filename were given
-            if( strcmp(token, ">") == 0) {
-                // Validate that filename was also provided
-                token = strtok_r(inBuffer, " ", &inBuffer);
-                if (token == NULL) {
-                    printf("Redirect Error, no filename provided.\n");
-                    successfulRead = 0;
-                    break;
-                }
-                // Filename was provided
-                else{
-                    filename = (char*)(malloc( (strlen(token) + 1) * sizeof(char) ));
-                    strcpy(filename, token);
-                    token = strtok_r(inBuffer, " ", &inBuffer);
-
+            if( (foundIndex = strchr(token, '>')) != NULL) {
+                // '>' was provided but no space (i.e. ">test.txt") and its not at the end (i.e. "ls> test.txt")
+                if(strlen(token) > 1) {
+                    if (*foundIndex != token[0]) { // '>' is not at beginning (i.e. "ls>test.txt")
+                        *foundIndex = '\0';
+                    }
+                    filename = (char*)(malloc( (strlen(token)) * sizeof(char) ));
+                    strcpy(filename, foundIndex+1);
                     out = 1;
-                    continue;
+                    if (*foundIndex == token[0]) { // '>' is not at beginning (i.e. "ls>test.txt")
+                        token = strtok_r(inBuffer, " ", &inBuffer);
+                        continue;
+                    }
+                }
+                else{
+                    // '>' was provided isolated (i.e. "ls > test"), checks if filename was provided after (i.e. "> test.txt")
+                    token = strtok_r(inBuffer, " ", &inBuffer);
+                    if (token == NULL) { // Filename not provided
+                        printf("Redirect Error, no filename provided.\n");
+                        successfulRead = 0;
+                        break;
+                    }
+                    else{ // Filename was provided
+                        filename = (char*)(malloc( (strlen(token) + 1) * sizeof(char) ));
+                        strcpy(filename, token);
+                        token = strtok_r(inBuffer, " ", &inBuffer);
+
+                        out = 1;
+                        continue;
+                    }
                 }
             }
 
@@ -101,6 +111,11 @@ void inputLoop() {
             numArgs++;
         }
 
+        if( strchr(args[numArgs - 1], '&') != NULL) {
+            background = 1;
+            free(args[numArgs - 1]);
+            args = (char**)realloc(args, --numArgs * sizeof(char*));
+        }
         if( successfulRead ) {
             // Add null terminated pointer to end of arg list
             args = (char**)realloc(args, ++numArgs * sizeof(char*));
