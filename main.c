@@ -13,32 +13,31 @@ int main(int argc, char* argv[]) {
 void inputLoop() {
     char* inBuffer = NULL;
     char* inputCopy; // For freeing
-    char** args;
-    char* inFile;
-    char* outFile;
-    int numArgs;
-    char* token;
+    char **args[2];
+    char *inFile[2];
+    char *outFile[2];
+    int numArgs[2];
     int background; 
-    int out;
-    int in;
+    int fd[2]; // This is just to pass down into newProcess() for recursive calls, not used elsewhere
+    int pipe;
     int successfulParse;
+    char* pipeIndex;
 
     //for killing zombies
     pid_t asyncPID;
     int status;
 
-    //for finding > and <
-    char* foundIndex;
-
     while(1) {
-        args = NULL;
-        numArgs = 0;
-        token = NULL;
-        outFile = NULL;
-        inFile = NULL;
+
+        // Initialize all variables
+        for(int i = 0; i < 2; i++) {
+            args[i] = NULL;
+            numArgs[i] = 0;
+            outFile[i] = NULL;
+            inFile[i] = NULL;
+        }
         background = 0;
-        out = 0;
-        in = 0;
+        pipe = 0;
 
         // wait for user input
         printf("> ");
@@ -55,147 +54,220 @@ void inputLoop() {
         // Internal shell commands
         if( strcmp(inBuffer, "exit") == 0 ) {
             free( inputCopy );
-            exitShell();
+            exitShell(getpgrp());
         }
         
-        // Parsing input redirection
-        successfulParse = parseIORedir(&in, inputCopy, &inFile, '<');
-        if( successfulParse == -1 ) {
-            perror("Syntax error on input redirection\n");
-            free( inputCopy );
-            continue;
-        }
-
-        // Parsing output redirection
-        successfulParse = parseIORedir(&out, inputCopy, &outFile, '>');
-        if( successfulParse == -1 ) {
-            perror("Syntax error on output redirection\n");
-            free( inputCopy );
-            continue;
-        }
-
-        // Grab optional args from inBuffer
-        token = strtok_r(inBuffer, " ", &inBuffer);
-        while (token != NULL) {
-            printf("{%s}\n", token);
-
-            // arg list is empty, must malloc first
-            if( args == NULL ) {
-                args = (char**)calloc(1, sizeof(char*));
+        
+        if( (pipeIndex = strchr(inputCopy, '|')) != NULL) {
+            // Split the input line in two and call parse twice
+            *pipeIndex = '\0';
+            printf("[%s] [%s]\n", inputCopy, pipeIndex + 1);
+            pipe = 1;
+            if( parseInput(inputCopy, &args[0], &numArgs[0], &outFile[0], &inFile[0], &background) == 0) {
+                free( inputCopy );
+                continue;
             }
-            // realloc space for new argument
-            else {
-                args = (char**)realloc(args, (numArgs + 1) * sizeof(char*));
+            if(args[1] == 0)
+            if( parseInput(pipeIndex + 1, &args[1], &numArgs[1], &outFile[1], &inFile[1], &background) == 0 ) {
+                free( inputCopy );
+                continue;
             }
-
-            // allocate new arg string
-            args[numArgs] = (char*)(malloc( (strlen(token) + 1) * sizeof(char) ));
-            strcpy(args[numArgs], token);
-
-            // parse next token
-            token = strtok_r(inBuffer, " ", &inBuffer);
-            numArgs++;
+        }
+        else {
+            // Parse the line
+            if( parseInput(inputCopy, &args[0], &numArgs[0], &outFile[0], &inFile[0], &background) == 0) {
+                free( inputCopy );
+                continue;
+            }
         }
 
-        if( strchr(args[numArgs - 1], '&') != NULL) {
-            background = 1;
-            free(args[numArgs - 1]);
-            args = (char**)realloc(args, --numArgs * sizeof(char*));
-        }
 
-        // Add null terminated pointer to end of arg list
-        args = (char**)realloc(args, ++numArgs * sizeof(char*));
-        args[numArgs - 1] = NULL;
         
 
         //TODO DEBUGGING
-        for(int i = 0; i < numArgs; i++) {
-            printf("[%s]", args[i]);
-        }
-        printf("\n");
-
-        printf("I/0/IF/OF?: %d/%d", in, out);
-        if(inFile!=NULL){printf("/%s", inFile);};
-        if(outFile!=NULL){printf("/%s", outFile);};
-        printf("\n");
-        newProcess(args[0], args, background, out, in, outFile, inFile);
-
-        if(inFile != NULL) {
-            free(inFile);
-        }
-        if(outFile != NULL) {
-            free(outFile);
-        }
+        /*for(int i = 0; i < 2; i++) {
+            for(int j = 0; j < numArgs[i]; j++) {
+                if(args[i] == NULL) {
+                    break;
+                }
+                printf("[%s]", args[i][j]);
+            }   
+            printf("\n");
+            printf("IF/OF?:");
+            if(inFile[i]!=NULL){printf(" [%s]", inFile[i]);};
+            if(outFile[i]!=NULL){printf(" [%s]", outFile[i]);};
+            printf("\n");
+        }*/
         
-        free( inputCopy );
-        freeArgs(args, numArgs);
+
+        newProcess(args, background, pipe, fd, outFile, inFile);
+
+        // Free all variables used
+        for( int i = 0; i < 2; i++){
+            if(inFile[i] != NULL) {
+                free(inFile[i]);
+            }
+            if(outFile[i] != NULL) {
+                free(outFile[i]);
+            }
+            freeArgs(args[i], numArgs[i]);
+        }
+        free( inputCopy ); 
     }
+        
 }
 
-int newProcess(char* command, char ** args, int bg, int out, int in, char* outFile, char* inFile) {
+int parseInput(char* inputLine, char*** args, int* numArgs, char** outFile, char** inFile, int* background) {
+    char** argList = *args;
+    char* token = NULL;
+    // Parsing input redirection
+    if( parseIORedir(inputLine, inFile, '<') == -1 ) {
+        perror("Syntax error on input redirection\n");
+        return 0;
+    }
+
+    if( parseIORedir(inputLine, outFile, '>') == -1 ) {
+        perror("Syntax error on output redirection\n");
+        return 0;
+    }
+
+    // Grab optional args from inBuffer
+    token = strtok_r(inputLine, " ", &inputLine);
+    while (token != NULL) {
+
+
+        // arg list is empty, must malloc first
+        if( argList == NULL ) {
+            argList = (char**)calloc(1, sizeof(char*));
+        }
+        // realloc space for new argument
+        else {
+            argList = (char**)realloc(argList, (*numArgs + 1) * sizeof(char*));
+        }
+
+        // allocate new arg string
+        argList[*numArgs] = (char*)(malloc( (strlen(token) + 1) * sizeof(char) ));
+        strcpy(argList[*numArgs], token);
+
+        // parse next token
+        token = strtok_r(inputLine, " ", &inputLine);
+        *numArgs = *numArgs + 1;
+    }
+    if(argList == NULL) {
+        return 0;
+    }
+
+    if(strchr(argList[*numArgs - 1], '&') != NULL) {
+        *background = 1;
+        free(argList[*numArgs - 1]);
+        *numArgs = *numArgs - 1;
+        argList = (char**)realloc(argList, *numArgs * sizeof(char*));
+    }
+
+    // Add null terminated pointer to end of arg list
+    *numArgs = *numArgs + 1;
+    argList = (char**)realloc(argList, *numArgs * sizeof(char*));
+    argList[*numArgs - 1] = NULL;
+
+    *args = argList;
+}
+
+int pipedProcessHandler(char **args[2], int bg, int p, int fd[2], char *outFile[2], char *inFile[2]) {
+
+}
+
+// args must have either 1 or 2 arrays of strings
+// bg flags if the command should be run in the background
+// pipe flags if the command should be piped
+// fd[2] are the file descriptors to be used if pipe is set to 1 or -1
+// outFile and inFile are filenames used to redirect IO to/from a file
+void newProcess(char **args[2], int bg, int p, int fd[2], char *outFile[2], char *inFile[2]) {
+
+    int j=0;
+    printf("process created\n");
+    int saved_stdin;
+    int saved_stdout;
+
     pid_t pid;
     int status;
-    int IOFlag = 0; // 0 for nothing, 1 for output, 2 for input. Different than params because this is only changed if filename is not empty
-    FILE* file;
-    int fd;
+    int IOfd;
 
+    // Pipe if flag was set
+    if( p == 1 ) {
+        saved_stdin = dup(0);
+        saved_stdout = dup(1);
+        printf("made pipe\n");
+        if( pipe(fd) == -1 ) {
+            perror("pipe");
+            exit(1);
+        }
+    }
+    // Fork and add PID to linked list for deletion on exit
     pid = fork();
-    //printf("PID: %d, %s\n", pid, command);
-    addToList( pid );
-
     if (pid < 0) {
         perror("Fork Failed\n");
-        return 1;
-    }
-
-
-    // Handling ">" and "<"
-    if( out && pid == 0) {
-        if((outFile != NULL)) {
-            fd = open(outFile, O_WRONLY | O_CREAT, 0777);
-            if( fd < 0 ) {
-                perror("output file: no such file or directory\n");
-                exit(1);
-            }
-            dup2(fd, STDOUT_FILENO);
-            close(fd);
-            IOFlag = 1;
-        }
-        else{
-            exit(1);
-        }
-    }   
-    
-    if( in && pid == 0) {
-        if((inFile != NULL)) {
-            fd = open(inFile, O_RDONLY, 0);
-            if(fd < 0) {
-                perror("input file: no such file or directory\n");
-                exit(1);
-            }
-            dup2(fd, STDIN_FILENO);
-            close(fd);
-            IOFlag = 2;
-        }
-        else{
-            exit(1);
-        }
-    }
+        return;
+    }    
 
     if (pid == 0) {
-        //printf("Executing %s\n", command);
-        if (execvp(command, args) == -1) {
-            perror("Command Failed\n");
+        if( p == 1 ) {
+            close(1);
+            close(fd[0]);
+            dup2 (fd[1], 1);
         }
-        exit(1);
+        if( p == -1 ) {
+            close(0);
+            close(fd[1]);
+            dup2 (fd[0], 0);
+        }
+        // "<" handler
+        if((inFile[0] != NULL)) {
+            IOfd = open(inFile[0], O_RDONLY, 0);
+            if(IOfd < 0) {
+                perror(inFile[0]);
+                exit(1);
+            }
+            dup2(IOfd, 0);
+            close(IOfd);
+        }
+
+        // ">" handler
+        if((outFile[0] != NULL) && pid == 0) {
+            IOfd = open(outFile[0], O_WRONLY | O_CREAT | O_TRUNC, 0777);
+            if( IOfd < 0 ) {
+                perror(outFile[0]);
+                
+                exit(1);
+            }
+            dup2(IOfd, 1);
+            close(IOfd);
+        }
+
+        //printf("Executing %s\n", command);
+        if (execvp(args[0][0], args[0]) == -1) {
+            perror(args[0][0]);
+        }
     }
-    else if (!bg) {
-        waitpid(pid, &status, 0);
-        removeFromList( pid );
+    else {
+        if( p == 1 ) {
+            // Move second arguments over to index 0 so recursive call can use them
+            char **newArgs[2] = {args[1], '\0'};
+            char *newOutFile[2] = {outFile[1], '\0'};
+            char *newInFile[2] = {inFile[1], '\0'};
+            newProcess(newArgs, 0, -1, fd, newOutFile, newInFile); 
+
+            close(fd[0]);
+            close(fd[1]);
+            dup2(saved_stdin, 0);
+            dup2(saved_stdout, 1);
+        }
+        else if(p == 0 && !bg) {
+                waitpid(pid, &status, 0);
+        }
         printf("Child Complete\n");
+        
     }
 
-    return 0;
 }
 
 char* readInputLine() { //TODO TRIM INPUT
@@ -220,19 +292,19 @@ char* readInputLine() { //TODO TRIM INPUT
     return buffer;
 }
 
-void exitShell() {
+void exitShell(pid_t subprocessGroupID) {
     pidNode* currNode;
 
     // Iteratively kills all active processes
-    while( pidList != NULL ) {
+    /*while( pidList != NULL ) {
         printf("pid: %d\n", pidList->pid);
         kill(pidList->pid, SIGKILL);
         currNode = pidList;
         pidList = pidList->next;
         freeNode(currNode);
-    }
+    }*/
     
-
+    kill(subprocessGroupID, SIGKILL);
     printf("myShell terminating...\n");
 
     printf("[Process completed]\n");
@@ -240,19 +312,17 @@ void exitShell() {
 }
 
 
-int parseIORedir(int* flag, char* input, char** filename, char key) {
+int parseIORedir(char* input, char** filename, char key) {
     char* foundIndex;
 
     if( (foundIndex = strchr(input, key)) != NULL) {
         // more than one key provided
         if( strchr(foundIndex+1, key) != NULL ) {
-            printf("no2\n");
             return -1;
         }
         
         // key is final character, no filename provided
         if(*foundIndex == input[strlen(input) - 1]) {
-            printf("no1\n");
             return -1;
         }
 
@@ -260,17 +330,13 @@ int parseIORedir(int* flag, char* input, char** filename, char key) {
         *filename = findFilename(foundIndex+1);
 
         if(strlen(*filename) == 0) {
-            printf("no3\n");
             return -1;
         }
 
         clearString(foundIndex, strlen(*filename));
-        *flag = 1;
         return 1;
     }
 
-    printf("no4\n");
-    *flag = 0;
     return 0;
 }
 
@@ -294,7 +360,7 @@ void clearString(char* string, int amt){
 char* findFilename(char* string) {
     char* filename;
     int count;
-    char blocklist[13] = {'\0', ' ', '>', '<', ',', '&', '/', '\\', ':', '*', '?', '"', '|'};
+    char blocklist[13] = {'\0', ' ', '>', '<', '|'};
     filename = (char*)(malloc(1 * sizeof(char) ));
     *filename = '\0';
     count = 1;
@@ -423,4 +489,11 @@ void freeArgs( char* args[], int numArgs ) {
         free(args[i]);
     }
     free(args);
+}
+
+void clearInputBuffer() {
+    char c;
+    do {
+        c = getchar();
+    } while( c != '\n' && c != EOF);
 }

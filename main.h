@@ -18,13 +18,17 @@ typedef struct pidNode_struct {
 } pidNode;
 
 void inputLoop();
-int newProcess(char* command, char ** args, int bg, int out, int in, char* outFile, char* inFile);
+void newProcess(char **args[2], int bg, int p, int fd[2], char *outFile[2], char *inFile[2]); 
+int pipedProcessHandler(char **args[2], int bg, int p, int fd[2], char *outFile[2], char *inFile[2]);
+int processHandler(char **args[2], int bg, int p, int fd[2], char *outFile[2], char *inFile[2]);
 char* readInputLine();
-void exitShell();
+void exitShell(pid_t subprocessGroupID);
 void freeArgs(char ** args, int numArgs);
-int parseIORedir(int* flag, char* input, char** filename, char key);
+int parseIORedir(char* input, char** filename, char key);
+int parseInput(char* inputLine, char*** args, int* numArgs, char** outFile, char** inFile, int* background);
 void clearString(char* string, int amt);
 char* findFilename(char* string);
+void clearInputBuffer();
 
 void testLinkedList();
 void addToList( int pid );
