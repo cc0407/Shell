@@ -518,7 +518,6 @@ void exitShell(int status) {
 
     // Iteratively kills all active processes
     while( pidList != NULL ) {
-        printf("pid: %d\n", pidList->pid);
         kill(pidList->pid, SIGKILL);
         currNode = pidList;
         pidList = pidList->next;
