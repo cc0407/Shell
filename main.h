@@ -11,17 +11,19 @@
 #include <limits.h>
 #include <string.h>
 #include <fcntl.h>
+#include <ctype.h>
 
 #ifndef ENVAMT
 #define ENVAMT 3
 #endif /* ENVAMT */
 
+// pid node for linked list
 typedef struct pidNode_struct {
     int pid;
     struct pidNode_struct* next;
 } pidNode;
 
-
+// ENV struct containing the name of the variable and the value
 typedef struct envStruct {
     char name[15];
     char* value;
@@ -29,8 +31,8 @@ typedef struct envStruct {
 
 
 // Initializing functions
-void loadProfile();
 void initENV();
+void loadProfile();
 
 // Main loop functions
 void inputLoop(int* argCount);
@@ -45,7 +47,7 @@ void processHandler(char **args, int bg, char *outFile, char *inFile);
 int newProcess(char **args, int bg, int p, int fd[2], pid_t *childPid, char *outFile, char *inFile); 
 
 // Built-in functions
-void exitShell();
+void exitShell(int status);
 void exportENV(char **args);
 void history(char* amt);
 

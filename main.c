@@ -53,7 +53,6 @@ void loadProfile(int* argCount) {
     // Attempt to open profile
     FILE* profile = fopen(filePath, "r");
     if(profile == NULL) {
-        fprintf(stderr, "Could not open profile %s\n", filePath);
         free(filePath);
         return;
     }
@@ -195,7 +194,11 @@ int parseLine (char* inputStr, int* argCount) {
         // If piping, split the input line in two and call parse twice
         if( (pipeIndex = strchr(inputCopy, '|')) != NULL) {
             *pipeIndex = '\0';
-            //printf("[%s] [%s]\n", inputCopy, pipeIndex + 1);
+            // more than one key provided
+            if( strchr(pipeIndex+1, '|') != NULL ) {
+                perror("Syntax error on input redirection\n");
+                return 0;
+            }
             pipe = 1;
             if( parseCommand(inputCopy, &args[0], &outFile[0], &inFile[0], &background) == 0) {
                 free( inputStr );
@@ -590,8 +593,6 @@ void history( char *amt ) {
     
     // Param specified
     if( amt != NULL) {
-
-        // Convert amt to int
         amtAsInt = atoi(amt);
 
         // If amtAsInt == 0 then can just reopen in append and return
