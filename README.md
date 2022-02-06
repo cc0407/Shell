@@ -153,6 +153,7 @@
 ---
 ## **Reading in a profile file on initialization**
 - The shell can be configured using a profile file located in the users home directory
+- **A profile file is included in this directory, move it to your home directory if you would like to use it.**
 ### Usage
 - Automatic on shell initialization
 ### Assumptions
