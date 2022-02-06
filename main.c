@@ -375,6 +375,9 @@ int newProcess(char **args, int bg, int pipeFlag, int fd[2], pid_t *childPid, ch
             free(tempPath);
         }
 
+        // Try to run commands in pwd
+        execv(args[0], args);
+
         // Command wasnt found, print error and free variables
         free(tempStrPtr);
         perror(args[0]);
