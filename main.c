@@ -3,32 +3,88 @@
 pidNode* pidList;
 int pidAmt;
 
-env[ENVAMT] envList;
+env envList[ENVAMT];
 
 int main(int argc, char* argv[]) {
+    loadProfile();
     printf("Welcome!\n");
     inputLoop();
 
     return 0;
 }
 
+void loadProfile() {
+    char* inBuffer;
+    int readFlag = 1;
+
+    // Build path to profile
+    char filePath[1024];
+    char profileName[18] = "/.CIS3110_profile";
+    strcpy(filePath, getenv("HOME"));
+    strcat(filePath, profileName);
+
+    // Attempt to open profile
+    FILE* profile = fopen(filePath, "r");
+    if(profile == NULL) {
+        fprintf(stderr, "Could not open profile ~/.CIS3110_profile.\n");
+        return;
+    }
+
+    // Iterate through each line, running the command. Stops at EOF
+    while(readFlag) {
+        inBuffer = readInputLine(profile);
+        // EOF found
+        if(strchr(inBuffer, EOF) != NULL) {
+            readFlag = 0;
+            // remove EOF from final character
+            inBuffer[strlen(inBuffer - 1)] = '\0'; 
+        }
+        parseLine(inBuffer);
+    }
+
+    fclose(profile);
+}
+
 void inputLoop() {
     char* inBuffer = NULL;
-    char* inputCopy; // For freeing
-    char **args[2];
-    char *inFile[2];
-    char *outFile[2];
-    int background; 
-    int pipe;
-    int successfulParse;
-    char* pipeIndex;
-    char* bgIndex;
+    //char **args[2];
+    //char *inFile[2];
+    //char *outFile[2];
+    //int background; 
+    //int successfulParse;
 
     //for killing zombies
     pid_t asyncPID;
     int status;
 
     while(1) {
+        
+        // Kill any completed background processes
+        asyncPID = waitpid(-1, &status, WNOHANG);
+        if( asyncPID > 0) {
+            removeFromList( asyncPID );
+            printf("Done            : %d\n", asyncPID);
+        }
+
+        // wait for user input
+        printf("> ");
+        inBuffer = readInputLine(NULL);
+        parseLine(inBuffer);
+        
+    }
+        
+}
+int parseLine (char* inputStr) {
+        char* pipeIndex;
+        char* bgIndex;
+        int pipe;
+        char **args[2];
+        char *inFile[2];
+        char *outFile[2];
+        int background; 
+        //int successfulParse;
+
+        char* inputCopy = inputStr;
 
         // Initialize all variables
         for(int i = 0; i < 2; i++) {
@@ -39,20 +95,8 @@ void inputLoop() {
         background = 0;
         pipe = 0;
 
-        // wait for user input
-        printf("> ");
-        inBuffer = readInputLine();
-        inputCopy = inBuffer;
-
-        // Kill any completed background processes
-        asyncPID = waitpid(-1, &status, WNOHANG);
-        if( asyncPID > 0) {
-            removeFromList( asyncPID );
-            printf("Done            : %d\n", asyncPID);
-        }
-
         // Internal shell commands
-        if( strcmp(inBuffer, "exit") == 0 ) {
+        if( strcmp(inputStr, "exit") == 0 ) {
             free( inputCopy );
             exitShell();
         }
@@ -62,31 +106,29 @@ void inputLoop() {
             clearString(bgIndex, 1);
         }
 
-        
+        // If piping, split the input line in two and call parse twice
         if( (pipeIndex = strchr(inputCopy, '|')) != NULL) {
-            // Split the input line in two and call parse twice
             *pipeIndex = '\0';
-            printf("[%s] [%s]\n", inputCopy, pipeIndex + 1);
+            //printf("[%s] [%s]\n", inputCopy, pipeIndex + 1);
             pipe = 1;
-            if( parseInput(inputCopy, &args[0], &outFile[0], &inFile[0], &background) == 0) {
-                free( inBuffer );
-                continue;
+            if( parseCommand(inputCopy, &args[0], &outFile[0], &inFile[0], &background) == 0) {
+                free( inputStr );
+                return 0;
             }
-            if(args[1] == 0)
-            if( parseInput(pipeIndex + 1, &args[1], &outFile[1], &inFile[1], &background) == 0 ) {
-                free( inBuffer );
-                continue;
+            if( parseCommand(pipeIndex + 1, &args[1], &outFile[1], &inFile[1], &background) == 0 ) {
+                free( inputStr );
+                return 0;
             }
         }
+        // Not piping, parse the whole line
         else {
-            // Parse the line
-            if( parseInput(inputCopy, &args[0], &outFile[0], &inFile[0], &background) == 0) {
-                free( inBuffer );
-                continue;
+            if( parseCommand(inputCopy, &args[0], &outFile[0], &inFile[0], &background) == 0) {
+                free( inputStr );
+                return 0;
             }
         }
         
-        free( inBuffer ); 
+        free( inputStr ); 
 
         if(pipe) {
             pipedProcessHandler(args, background, outFile, inFile);
@@ -105,29 +147,26 @@ void inputLoop() {
             }
             freeArgs(args[i]);
         }
-        
-    }
-        
 }
 
-int parseInput(char* inputLine, char*** args, char** outFile, char** inFile, int* background) {
+int parseCommand(char* commandStr, char*** args, char** outFile, char** inFile, int* background) {
     char** argList = *args;
     char* token = NULL;
     int numArgs = 0;
 
     // Parsing input redirection
-    if( parseIORedir(inputLine, inFile, '<') == -1 ) {
+    if( parseIORedir(commandStr, inFile, '<') == -1 ) {
         perror("Syntax error on input redirection\n");
         return 0;
     }
 
-    if( parseIORedir(inputLine, outFile, '>') == -1 ) {
+    if( parseIORedir(commandStr, outFile, '>') == -1 ) {
         perror("Syntax error on output redirection\n");
         return 0;
     }
 
     // Grab optional args from inBuffer
-    token = strtok_r(inputLine, " ", &inputLine);
+    token = strtok_r(commandStr, " ", &commandStr);
     while (token != NULL) {
 
 
@@ -145,7 +184,7 @@ int parseInput(char* inputLine, char*** args, char** outFile, char** inFile, int
         strcpy(argList[numArgs], token);
 
         // parse next token
-        token = strtok_r(inputLine, " ", &inputLine);
+        token = strtok_r(commandStr, " ", &commandStr);
         numArgs++;
     }
     if(argList == NULL) {
@@ -227,7 +266,6 @@ void processHandler(char **args, int bg, char *outFile, char *inFile) {
 // fd[2] are the file descriptors to be used if pipe is set to 1 or -1
 // outFile and inFile are filenames used to redirect IO to/from a file
 int newProcess(char **args, int bg, int p, int fd[2], pid_t *childPid, char *outFile, char *inFile) {
-    printf("process created\n");
 
     pid_t pid;
     int status;
@@ -284,30 +322,52 @@ int newProcess(char **args, int bg, int p, int fd[2], pid_t *childPid, char *out
     }
     else {
         *childPid = pid;
-        printf("Child Complete\n");
         return 1;
     }
 
 }
 
-char* readInputLine() {
+//if infile is NULL, it will read from stdin
+char* readInputLine(FILE* infile) {
     int bufferLen = 100;
     char* buffer;
     int charAmt = 0;
     char c;
+    int loopFlag = 1;
 
     // Allocate initial buffer
     buffer = calloc(bufferLen, bufferLen * sizeof(char));
-    c = getchar();
+    
+    do {
+        if(infile == NULL) {
+            c = getchar();
+        }
+        else {
+            c = fgetc(infile);
+        }
 
-    while( c != '\n' && c != EOF) {
+        // Break statements depending of if reading from stdin or file
+        if(infile == NULL) {
+            if (c == '\n' || c == EOF) {
+                break;
+            }
+        }
+        else {
+            if (c == '\n') {
+                break;
+            }
+            // Keep EOF in string so it can be used when reading profile in
+            else if( c == EOF ) {
+                loopFlag = 0;
+            }
+        }
+
         if( charAmt >= bufferLen ) {
             buffer = realloc( buffer, (bufferLen += 100) * sizeof(char));
         }
         buffer[charAmt] = c;
         charAmt++;
-        c = getchar();
-    }
+    } while(loopFlag);
 
     return buffer;
 }
@@ -326,7 +386,7 @@ void exitShell() {
 
     printf("myShell terminating...\n");
 
-    printf("[Process completed]\n");
+    printf("\n[Process completed]\n");
     exit(EXIT_SUCCESS);
 }
 

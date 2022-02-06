@@ -22,20 +22,21 @@ typedef struct pidNode_struct {
 } pidNode;
 
 typedef struct envStruct {
-    char[15] name;
+    char name[15];
     char* value;
 } env;
 
+void loadProfile();
 void inputLoop();
 int newProcess(char **args, int bg, int p, int fd[2], pid_t *childPid, char *outFile, char *inFile); 
 void pipedProcessHandler(char **args[2], int bg, char *outFile[2], char *inFile[2]);
 void processHandler(char **args, int bg, char *outFile, char *inFile);
-char* readInputLine();
+char* readInputLine(FILE* infile);
 void exitShell();
-//void freeArgs(char ** args, int numArgs);
 void freeArgs(char ** args);
 int parseIORedir(char* input, char** filename, char key);
-int parseInput(char* inputLine, char*** args, char** outFile, char** inFile, int* background);
+int parseCommand(char* commandStr, char*** args, char** outFile, char** inFile, int* background); // parses single command, including < >
+int parseLine (char* inputStr); // Parses whole line for built-in commands and | &
 void clearString(char* string, int amt);
 char* findFilename(char* string);
 void clearInputBuffer();
