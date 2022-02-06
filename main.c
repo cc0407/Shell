@@ -115,6 +115,7 @@ int parseLine (char* inputStr, int* argCount) {
             *argCount = *argCount + 1;
             if(histFile != NULL) {
                 fprintf(histFile, " %d  %s\n", *argCount, inputStr);
+                fflush(histFile); // Clear buffer so program does duplicate output on forks
             }
         }
 
@@ -183,13 +184,12 @@ int parseLine (char* inputStr, int* argCount) {
         else if( strcmp(args[0][0], "cd") == 0 ) {
             // If no value is specified, change directory to myHOME
             if(args[0][1] == NULL) {
-                printf("%s\n", envList[2].value);
                 if( chdir( envList[2].value ) == -1) {
-                perror(args[0][1]);
+                    perror(args[0][1]);
                 }
             }
             // Attempt to change directory to argument provided
-            if( chdir( args[0][1] ) == -1) {
+            else if( chdir( args[0][1] ) == -1) {
                 perror(args[0][1]);
             }
             freeLineVariables(args, outFile, inFile);
