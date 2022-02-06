@@ -3,6 +3,8 @@
 pidNode* pidList;
 int pidAmt;
 
+env[ENVAMT] envList;
+
 int main(int argc, char* argv[]) {
     printf("Welcome!\n");
     inputLoop();

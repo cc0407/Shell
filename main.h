@@ -12,10 +12,19 @@
 #include <string.h>
 #include <fcntl.h>
 
+#ifndef ENVAMT
+#define ENVAMT 3
+#endif /* ENVAMT */
+
 typedef struct pidNode_struct {
     int pid;
     struct pidNode_struct* next;
 } pidNode;
+
+typedef struct envStruct {
+    char[15] name;
+    char* value;
+} env;
 
 void inputLoop();
 int newProcess(char **args, int bg, int p, int fd[2], pid_t *childPid, char *outFile, char *inFile); 
