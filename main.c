@@ -2,29 +2,50 @@
 
 pidNode* pidList;
 int pidAmt;
-
-env envList[ENVAMT];
+env envList[ENVAMT]; // 0 is myPATH, 1 is myHISTFILE, 2 is myHOME
+FILE * histFile;
 
 int main(int argc, char* argv[]) {
+    initENV();
     loadProfile();
+    //histFile = fopen()
     printf("Welcome!\n");
     inputLoop();
 
     return 0;
 }
 
+void initENV() {
+    // Allocate space for myHOME in envList[2]
+    strcpy(envList[2].name, "myHOME");
+    envList[2].value = (char*)malloc(1024 * sizeof(char)); // mallloc with large buffer
+    strcpy(envList[2].value, getenv("HOME"));
+    envList[2].value = realloc(envList[2].value, strlen(envList[2].value) + 1); // shorten the buffer to fit string
+
+    // Allocate space for myHISTFILE in envList[1]
+    strcpy(envList[1].name, "myHISTFILE");
+    envList[1].value = (char*)malloc( (strlen(envList[2].value) + 18) * sizeof(char)); // allocate space for path variable and 
+    strcpy(envList[1].value, getenv("HOME"));
+    strcat(envList[1].value, "/.CIS3110_History");
+
+    // Allocate space for myPATH in envList[0]
+    strcpy(envList[0].name, "myPATH");
+}
+
 void loadProfile() {
     char* inBuffer;
     int readFlag = 1;
+    char * EOFIndex;
 
     // Build path to profile
-    char filePath[1024];
+    char *filePath = (char*)malloc( (strlen(envList[2].value) + 18) * sizeof(char));
     char profileName[18] = "/.CIS3110_profile";
-    strcpy(filePath, getenv("HOME"));
+    strcpy(filePath, envList[2].value);
     strcat(filePath, profileName);
 
     // Attempt to open profile
     FILE* profile = fopen(filePath, "r");
+    free(filePath);
     if(profile == NULL) {
         fprintf(stderr, "Could not open profile ~/.CIS3110_profile.\n");
         return;
@@ -34,10 +55,10 @@ void loadProfile() {
     while(readFlag) {
         inBuffer = readInputLine(profile);
         // EOF found
-        if(strchr(inBuffer, EOF) != NULL) {
+        if((EOFIndex = strchr(inBuffer, EOF)) != NULL) {
             readFlag = 0;
             // remove EOF from final character
-            inBuffer[strlen(inBuffer - 1)] = '\0'; 
+            *EOFIndex = '\0'; 
         }
         parseLine(inBuffer);
     }
@@ -95,12 +116,9 @@ int parseLine (char* inputStr) {
         background = 0;
         pipe = 0;
 
-        // Internal shell commands
-        if( strcmp(inputStr, "exit") == 0 ) {
-            free( inputCopy );
-            exitShell();
-        }
+        /* End Internal Shell Commands */
 
+        // & and | parsing
         if((bgIndex = strchr(inputCopy, '&')) != NULL) {
             background = 1;
             clearString(bgIndex, 1);
@@ -130,6 +148,17 @@ int parseLine (char* inputStr) {
         
         free( inputStr ); 
 
+        /* Internal Shell Commands */
+        if( strcmp(args[0][0], "exit") == 0 ) {
+            freeLineVariables(args, outFile, inFile);
+            exitShell();
+        }
+        else if( strcmp(args[0][0], "export") == 0 ) {
+            exportENV( args[0] );
+            freeLineVariables(args, outFile, inFile);
+            return 1;
+        }
+
         if(pipe) {
             pipedProcessHandler(args, background, outFile, inFile);
         }
@@ -138,15 +167,7 @@ int parseLine (char* inputStr) {
         }
 
         // Free all variables used
-        for( int i = 0; i < 2; i++){
-            if(inFile[i] != NULL) {
-                free(inFile[i]);
-            }
-            if(outFile[i] != NULL) {
-                free(outFile[i]);
-            }
-            freeArgs(args[i]);
-        }
+        freeLineVariables(args, outFile, inFile);
 }
 
 int parseCommand(char* commandStr, char*** args, char** outFile, char** inFile, int* background) {
@@ -202,7 +223,7 @@ int parseCommand(char* commandStr, char*** args, char** outFile, char** inFile, 
 void pipedProcessHandler(char **args[2], int bg, char *outFile[2], char *inFile[2]) {
     int status;
     pid_t pid1, pid2;
-    int pResult1, pResult2;
+    int pResult1, pResult2; // 1 if command ran successfully, 0 otherwise
 
     // Create pipe with new file descriptors
     int fd[2];
@@ -240,7 +261,7 @@ void processHandler(char **args, int bg, char *outFile, char *inFile) {
     int status;
     pid_t pid1;
     int fd[2];
-    int pResult;
+    int pResult; // 1 if command ran successfully, 0 otherwise
 
     // Create new process, running its command
     pResult = newProcess(args, bg, 0, fd, &pid1, outFile, inFile);
@@ -262,13 +283,12 @@ void processHandler(char **args, int bg, char *outFile, char *inFile) {
 
 // args must have either 1 or 2 arrays of strings
 // bg flags if the command should be run in the background
-// pipe flags if the command should be piped
+// pipe flag either 1 for left side of pipe, -1 for right side of pipe, or 0 for no pipe
 // fd[2] are the file descriptors to be used if pipe is set to 1 or -1
 // outFile and inFile are filenames used to redirect IO to/from a file
-int newProcess(char **args, int bg, int p, int fd[2], pid_t *childPid, char *outFile, char *inFile) {
+int newProcess(char **args, int bg, int pipeFlag, int fd[2], pid_t *childPid, char *outFile, char *inFile) {
 
     pid_t pid;
-    int status;
     int IOfd;
 
     // Fork and add PID to linked list for deletion on exit
@@ -279,16 +299,18 @@ int newProcess(char **args, int bg, int p, int fd[2], pid_t *childPid, char *out
     }
 
     if (pid == 0) {
-        if( p == 1 ) {
+        // Pipe handling
+        if( pipeFlag == 1 ) {
             close(1);
             close(fd[0]);
             dup2 (fd[1], 1);
         }
-        if( p == -1 ) {
+        if( pipeFlag == -1 ) {
             close(0);
             close(fd[1]);
             dup2 (fd[0], 0);
         }
+
         // "<" handler
         if((inFile != NULL)) {
             IOfd = open(inFile, O_RDONLY, 0);
@@ -313,7 +335,7 @@ int newProcess(char **args, int bg, int p, int fd[2], pid_t *childPid, char *out
             close(IOfd);
         }
 
-        //printf("Executing %s\n", command);
+        // Execute command
         if (execvp(args[0], args) == -1) {
             perror(args[0]);
             freeArgs(args);
@@ -375,6 +397,11 @@ char* readInputLine(FILE* infile) {
 void exitShell() {
     pidNode* currNode;
 
+    // Free all ENV variables
+    for( int i = 0; i < ENVAMT; i++ ) {
+        free(envList[i].value);
+    }
+
     // Iteratively kills all active processes
     while( pidList != NULL ) {
         printf("pid: %d\n", pidList->pid);
@@ -390,6 +417,24 @@ void exitShell() {
     exit(EXIT_SUCCESS);
 }
 
+//TODO add changing of variables with export
+void exportENV( char **args ) {
+    // Input validation
+    if(args == NULL) {
+        return;
+    }
+
+    // Print all variables if no arguments are provided
+    if( args[1] == NULL ) {
+        for( int i = 0; i < ENVAMT; i++ ) {
+            printENV(envList[i]);
+        }
+    }
+}
+
+void printENV( env toPrint ) {
+    printf("declare -x %s=\"%s\"\n", toPrint.name, toPrint.value);
+}
 
 int parseIORedir(char* input, char** filename, char key) {
     char* foundIndex;
@@ -459,22 +504,6 @@ char* findFilename(char* string) {
         strncat(filename, string + i, 1);
     }
     return filename;
-}
-
-
-void testLinkedList() {
-    addToList(1);
-    printList();
-    addToList(2);
-    addToList(3);
-    addToList(4);
-    printList();
-    removeFromList(1);
-    printList();
-    removeFromList(3);
-    printList();
-    freeList();
-    printList();
 }
 
 void addToList( int pid ) {
@@ -579,6 +608,19 @@ void freeArgs( char* args[] ) {
     }
 
     free(args);
+}
+
+void freeLineVariables( char ** args[2], char *outFile[2], char *inFile[2]) {
+    // Free all variables used
+    for( int i = 0; i < 2; i++){
+        if(inFile[i] != NULL) {
+            free(inFile[i]);
+        }
+        if(outFile[i] != NULL) {
+            free(outFile[i]);
+        }
+        freeArgs(args[i]);
+    }
 }
 
 void clearInputBuffer() {
