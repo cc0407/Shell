@@ -28,13 +28,15 @@ typedef struct envStruct {
 
 void initENV();
 void loadProfile();
-void inputLoop();
+void inputLoop(int* argCount);
 int newProcess(char **args, int bg, int p, int fd[2], pid_t *childPid, char *outFile, char *inFile); 
 void pipedProcessHandler(char **args[2], int bg, char *outFile[2], char *inFile[2]);
 void processHandler(char **args, int bg, char *outFile, char *inFile);
 char* readInputLine(FILE* infile);
 void exitShell();
 void exportENV(char **args);
+void openHistFile(char* mode);
+void history(char* amt);
 void replaceVarInLine(char** inputStr); // pointer to input string
 void printENV( env toPrint );
 void freeArgs(char ** args);
@@ -42,7 +44,7 @@ void freeERROR(char ** args);
 void freeLineVariables( char ** args[2], char *outFile[2], char *inFile[2]);
 int parseIORedir(char* input, char** filename, char key);
 int parseCommand(char* commandStr, char*** args, char** outFile, char** inFile, int* background); // parses single command, including < >
-int parseLine (char* inputStr); // Parses whole line for built-in commands and | &
+int parseLine (char* inputStr, int* argCount); // Parses whole line for built-in commands and | &
 void clearString(char* string, int amt);
 char* findFilename(char* string);
 

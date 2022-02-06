@@ -6,16 +6,12 @@ env envList[ENVAMT]; // 0 is myPATH, 1 is myHISTFILE, 2 is myHOME
 FILE * histFile;
 
 int main(int argc, char* argv[]) {
+    int argCount = 0;
     initENV();
-    loadProfile();
+    loadProfile(&argCount);
 
-    // Attempt to open history file
-    histFile = fopen(envList[1].value, "w");
-    if(histFile == NULL) {
-        fprintf(stderr, "Could not open history file %s\n", envList[1].value);
-    }
-    printf("Welcome!\n");
-    inputLoop();
+    openHistFile("w");
+    inputLoop(&argCount);
 
     return 0;
 }
@@ -42,7 +38,7 @@ void initENV() {
     strcpy(envList[0].value, "/bin");
 }
 
-void loadProfile() {
+void loadProfile(int* argCount) {
     char* inBuffer;
     int readFlag = 1;
     char * EOFIndex;
@@ -71,17 +67,14 @@ void loadProfile() {
             // remove EOF from final character
             *EOFIndex = '\0'; 
         }
-        parseLine(inBuffer);
+        parseLine(inBuffer, NULL);
     }
 
     fclose(profile);
 }
 
-void inputLoop() {
+void inputLoop(int* argCount) {
     char* inBuffer = NULL;
-
-    // For histfile
-    int cmdCount = 0;
 
     // For killing completed background processes
     pid_t asyncPID;
@@ -99,12 +92,12 @@ void inputLoop() {
         // wait for user input
         printf("> ");
         inBuffer = readInputLine(NULL);
-        parseLine(inBuffer);
+        parseLine(inBuffer, argCount);
         
     }
         
 }
-int parseLine (char* inputStr) {
+int parseLine (char* inputStr, int* argCount) {
         char* pipeIndex;
         char* bgIndex;
         int pipe;
@@ -112,8 +105,18 @@ int parseLine (char* inputStr) {
         char *inFile[2];
         char *outFile[2];
         int background; 
-        //int successfulParse;
 
+        if(strlen(inputStr) == 0) {
+            free( inputStr );
+            return 0;
+        }
+        
+        if(argCount != NULL) {
+            *argCount = *argCount + 1;
+            if(histFile != NULL) {
+                fprintf(histFile, " %d  %s\n", *argCount, inputStr);
+            }
+        }
 
         // Replace all shell variables with their respective value
         replaceVarInLine(&inputStr);
@@ -169,6 +172,11 @@ int parseLine (char* inputStr) {
         }
         else if( strcmp(args[0][0], "export") == 0 ) {
             exportENV( args[0] );
+            freeLineVariables(args, outFile, inFile);
+            return 1;
+        }
+        else if( strcmp(args[0][0], "history") == 0 ) {
+            history( args[0][1] );
             freeLineVariables(args, outFile, inFile);
             return 1;
         }
@@ -499,6 +507,33 @@ void replaceVarInLine(char** inputStr) {
     }
 }
 
+void history( char *amt ) {
+    char* input;
+    char* EOFIndex;
+    int readFlag = 1;
+
+    // Reopen histFile for reading
+    fclose(histFile);
+    openHistFile("r");
+    
+    while(readFlag) {
+        input = readInputLine(histFile);
+        // EOF found
+        if((EOFIndex = strchr(input, EOF)) != NULL) {
+            readFlag = 0;
+            // remove EOF from final character
+            *EOFIndex = '\0'; 
+        }
+        printf("%s\n", input);
+        free(input);
+    }
+
+    // Reopen histFile in append mode and continue running
+    fclose(histFile);
+    openHistFile("a");
+
+}
+
 void exportENV( char **args ) {
     // Input validation
     if(args == NULL) {
@@ -748,3 +783,10 @@ void freeLineVariables( char ** args[2], char *outFile[2], char *inFile[2]) {
     }
 }
 
+void openHistFile(char* mode) {
+    // Attempt to open history file
+    histFile = fopen(envList[1].value, mode);
+    if(histFile == NULL) {
+        fprintf(stderr, "Could not open history file %s\n", envList[1].value);
+    }
+}
