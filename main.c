@@ -8,7 +8,12 @@ FILE * histFile;
 int main(int argc, char* argv[]) {
     initENV();
     loadProfile();
-    //histFile = fopen()
+
+    // Attempt to open history file
+    histFile = fopen(envList[1].value, "w");
+    if(histFile == NULL) {
+        fprintf(stderr, "Could not open history file %s\n", envList[1].value);
+    }
     printf("Welcome!\n");
     inputLoop();
 
@@ -18,19 +23,22 @@ int main(int argc, char* argv[]) {
 void initENV() {
     // Allocate space for myHOME in envList[2]
     strcpy(envList[2].name, "myHOME");
-    envList[2].value = (char*)malloc(1024 * sizeof(char)); // mallloc with large buffer
+    envList[2].value = (char*)malloc(1024 * sizeof(char)); // malloc with large buffer
+    // Store $HOME in value as default
     strcpy(envList[2].value, getenv("HOME"));
     envList[2].value = realloc(envList[2].value, strlen(envList[2].value) + 1); // shorten the buffer to fit string
 
     // Allocate space for myHISTFILE in envList[1]
     strcpy(envList[1].name, "myHISTFILE");
-    envList[1].value = (char*)malloc( (strlen(envList[2].value) + 18) * sizeof(char)); // allocate space for path variable and 
-    strcpy(envList[1].value, getenv("HOME"));
+    envList[1].value = (char*)malloc( (strlen(envList[2].value) + 18) * sizeof(char));
+    // Store $myHOME/.CIS3110_History in value as default
+    strcpy(envList[1].value, envList[2].value);
     strcat(envList[1].value, "/.CIS3110_History");
 
     // Allocate space for myPATH in envList[0]
     strcpy(envList[0].name, "myPATH");
-    envList[0].value = (char*)malloc( 5 * sizeof(char)); // allocate space for path variable and 
+    envList[0].value = (char*)malloc( 5 * sizeof(char));
+    // Store "/bin" in value as default
     strcpy(envList[0].value, "/bin");
 }
 
@@ -47,12 +55,13 @@ void loadProfile() {
 
     // Attempt to open profile
     FILE* profile = fopen(filePath, "r");
-    free(filePath);
     if(profile == NULL) {
-        fprintf(stderr, "Could not open profile ~/.CIS3110_profile.\n");
+        fprintf(stderr, "Could not open profile %s\n", filePath);
+        free(filePath);
         return;
     }
 
+    free(filePath);
     // Iterate through each line, running the command. Stops at EOF
     while(readFlag) {
         inBuffer = readInputLine(profile);
@@ -70,13 +79,11 @@ void loadProfile() {
 
 void inputLoop() {
     char* inBuffer = NULL;
-    //char **args[2];
-    //char *inFile[2];
-    //char *outFile[2];
-    //int background; 
-    //int successfulParse;
 
-    //for killing zombies
+    // For histfile
+    int cmdCount = 0;
+
+    // For killing completed background processes
     pid_t asyncPID;
     int status;
 
@@ -299,6 +306,12 @@ int newProcess(char **args, int bg, int pipeFlag, int fd[2], pid_t *childPid, ch
     pid_t pid;
     int IOfd;
 
+    char* tempStr;
+    char* tempStrPtr;
+    char* tempPath;
+    char* token;
+    int commandFlag = 1;
+
     // Fork and add PID to linked list for deletion on exit
     pid = fork();
     if (pid < 0) {
@@ -324,7 +337,7 @@ int newProcess(char **args, int bg, int pipeFlag, int fd[2], pid_t *childPid, ch
             IOfd = open(inFile, O_RDONLY, 0);
             if(IOfd < 0) {
                 perror(inFile);
-                freeArgs(args);
+                freeERROR(args);
                 exit(1);
             }
             dup2(IOfd, 0);
@@ -336,7 +349,7 @@ int newProcess(char **args, int bg, int pipeFlag, int fd[2], pid_t *childPid, ch
             IOfd = open(outFile, O_WRONLY | O_CREAT | O_TRUNC, 0777);
             if( IOfd < 0 ) {
                 perror(outFile);
-                freeArgs(args);
+                freeERROR(args);
                 exit(1);
             }
             dup2(IOfd, 1);
@@ -344,11 +357,29 @@ int newProcess(char **args, int bg, int pipeFlag, int fd[2], pid_t *childPid, ch
         }
 
         // Execute command
-        if (execvp(args[0], args) == -1) {
-            perror(args[0]);
-            freeArgs(args);
-            exit(1);
+        // Create copy of path variable for strtok
+        tempStr = (char*)malloc( (strlen(envList[0].value) + 1) * sizeof(char) );
+        strcpy(tempStr, envList[0].value);
+        tempStrPtr = tempStr;
+
+        token = strtok_r(tempStr, ":", &tempStr);
+        while( token != NULL ) {
+            // Allocate space for token, '/' '\n', and command
+            tempPath = (char*)malloc( (strlen(token) + 2 + strlen(args[0])) * sizeof(char));
+            strcpy(tempPath, token);
+            strcat(tempPath, "/");
+            strcat(tempPath, args[0]);
+
+            execv(tempPath, args);
+            token = strtok_r(tempStr, ":", &tempStr);
+            free(tempPath);
         }
+
+        // Command wasnt found, print error and free variables
+        free(tempStrPtr);
+        perror(args[0]);
+        freeERROR(args);
+        exit(1);
     }
     else {
         *childPid = pid;
@@ -405,6 +436,7 @@ char* readInputLine(FILE* infile) {
 void exitShell() {
     pidNode* currNode;
 
+    fclose(histFile);
     // Free all ENV variables
     for( int i = 0; i < ENVAMT; i++ ) {
         free(envList[i].value);
@@ -495,7 +527,10 @@ void exportENV( char **args ) {
                 nameFoundFlag = 1;
                 // Get the new value
                 token = strtok_r(argCopy, "=", &argCopy);
-
+                if(token == NULL) {
+                    fprintf(stderr, "Syntax Error near '='. No value found\n");
+                    break;
+                }
                 // Free current env variable value if not empty
                 if(envList[i].value != NULL) {
                     free(envList[i].value);
@@ -670,11 +705,20 @@ void freeNode(pidNode* node) {
 }
 
 
-//void freeArgs( char* args[], int numArgs ) {
-void freeArgs( char* args[] ) {
-    /*for( int i = 0; i < numArgs; i++ ) {
-        free(args[i]);
-    }*/
+// Free all memory on child error
+void freeERROR( char* args[] ) {
+    // Close history file
+    fclose(histFile);
+
+    // Free all ENV variables
+    for( int i = 0; i < ENVAMT; i++ ) {
+        free(envList[i].value);
+    }
+    freeArgs(args);
+}
+
+void freeArgs(char ** args) {
+    // Free arguments
     if(args == NULL) {
         return;
     }
@@ -701,9 +745,3 @@ void freeLineVariables( char ** args[2], char *outFile[2], char *inFile[2]) {
     }
 }
 
-void clearInputBuffer() {
-    char c;
-    do {
-        c = getchar();
-    } while( c != '\n' && c != EOF);
-}

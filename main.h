@@ -38,13 +38,13 @@ void exportENV(char **args);
 void replaceVarInLine(char** inputStr); // pointer to input string
 void printENV( env toPrint );
 void freeArgs(char ** args);
+void freeERROR(char ** args);
 void freeLineVariables( char ** args[2], char *outFile[2], char *inFile[2]);
 int parseIORedir(char* input, char** filename, char key);
 int parseCommand(char* commandStr, char*** args, char** outFile, char** inFile, int* background); // parses single command, including < >
 int parseLine (char* inputStr); // Parses whole line for built-in commands and | &
 void clearString(char* string, int amt);
 char* findFilename(char* string);
-void clearInputBuffer();
 
 void addToList( int pid );
 void printList();
