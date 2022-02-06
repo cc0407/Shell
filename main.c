@@ -16,6 +16,7 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
+/* Initializing functions */
 void initENV() {
     // Allocate space for myHOME in envList[2]
     strcpy(envList[2].name, "myHOME");
@@ -73,6 +74,9 @@ void loadProfile(int* argCount) {
     fclose(profile);
 }
 
+/*---------------------*/
+/* Main loop functions */
+/*---------------------*/
 void inputLoop(int* argCount) {
     char* inBuffer = NULL;
     char pathBuffer[256];
@@ -97,6 +101,52 @@ void inputLoop(int* argCount) {
     }
         
 }
+
+//if infile is NULL, it will read from stdin
+char* readInputLine(FILE* infile) {
+    int bufferLen = 100;
+    char* buffer;
+    int charAmt = 0;
+    char c;
+    int loopFlag = 1;
+
+    // Allocate initial buffer
+    buffer = calloc(bufferLen, bufferLen * sizeof(char));
+    
+    do {
+        if(infile == NULL) {
+            c = getchar();
+        }
+        else {
+            c = fgetc(infile);
+        }
+
+        // Break statements depending of if reading from stdin or file
+        if(infile == NULL) {
+            if (c == '\n' || c == EOF) {
+                break;
+            }
+        }
+        else {
+            if (c == '\n') {
+                break;
+            }
+            // Keep EOF in string so it can be used when reading profile in
+            else if( c == EOF ) {
+                loopFlag = 0;
+            }
+        }
+
+        if( charAmt >= bufferLen ) {
+            buffer = realloc( buffer, (bufferLen += 100) * sizeof(char));
+        }
+        buffer[charAmt] = c;
+        charAmt++;
+    } while(loopFlag);
+
+    return buffer;
+}
+
 int parseLine (char* inputStr, int* argCount) {
         char* pipeIndex;
         char* bgIndex;
@@ -168,8 +218,16 @@ int parseLine (char* inputStr, int* argCount) {
 
         /* Internal Shell Commands */
         if( strcmp(args[0][0], "exit") == 0 ) {
+            int status;
+            if( args[0][1] != NULL ) {
+                status = atoi(args[0][1]);
+            }
+            else{
+                status = 0;
+            }
             freeLineVariables(args, outFile, inFile);
-            exitShell();
+            exitShell(status);
+
         }
         else if( strcmp(args[0][0], "export") == 0 ) {
             exportENV( args[0] );
@@ -258,6 +316,37 @@ int parseCommand(char* commandStr, char*** args, char** outFile, char** inFile, 
     *args = argList;
 }
 
+int parseIORedir(char* input, char** filename, char key) {
+    char* foundIndex;
+
+    if( (foundIndex = strchr(input, key)) != NULL) {
+        // more than one key provided
+        if( strchr(foundIndex+1, key) != NULL ) {
+            return -1;
+        }
+        
+        // key is final character, no filename provided
+        if(*foundIndex == input[strlen(input) - 1]) {
+            return -1;
+        }
+
+        *foundIndex = ' ';
+        *filename = findFilename(foundIndex+1);
+
+        if(strlen(*filename) == 0) {
+            return -1;
+        }
+
+        clearString(foundIndex, strlen(*filename));
+        return 1;
+    }
+
+    return 0;
+}
+
+/*-------------------*/
+/* Process functions */
+/*-------------------*/
 void pipedProcessHandler(char **args[2], int bg, char *outFile[2], char *inFile[2]) {
     int status;
     pid_t pid1, pid2;
@@ -294,7 +383,6 @@ void pipedProcessHandler(char **args[2], int bg, char *outFile[2], char *inFile[
     }
 }
 
-
 void processHandler(char **args, int bg, char *outFile, char *inFile) {
     int status;
     pid_t pid1;
@@ -317,7 +405,6 @@ void processHandler(char **args, int bg, char *outFile, char *inFile) {
     }
 
 }
-
 
 // args must have either 1 or 2 arrays of strings
 // bg flags if the command should be run in the background
@@ -414,52 +501,10 @@ int newProcess(char **args, int bg, int pipeFlag, int fd[2], pid_t *childPid, ch
 
 }
 
-//if infile is NULL, it will read from stdin
-char* readInputLine(FILE* infile) {
-    int bufferLen = 100;
-    char* buffer;
-    int charAmt = 0;
-    char c;
-    int loopFlag = 1;
-
-    // Allocate initial buffer
-    buffer = calloc(bufferLen, bufferLen * sizeof(char));
-    
-    do {
-        if(infile == NULL) {
-            c = getchar();
-        }
-        else {
-            c = fgetc(infile);
-        }
-
-        // Break statements depending of if reading from stdin or file
-        if(infile == NULL) {
-            if (c == '\n' || c == EOF) {
-                break;
-            }
-        }
-        else {
-            if (c == '\n') {
-                break;
-            }
-            // Keep EOF in string so it can be used when reading profile in
-            else if( c == EOF ) {
-                loopFlag = 0;
-            }
-        }
-
-        if( charAmt >= bufferLen ) {
-            buffer = realloc( buffer, (bufferLen += 100) * sizeof(char));
-        }
-        buffer[charAmt] = c;
-        charAmt++;
-    } while(loopFlag);
-
-    return buffer;
-}
-
-void exitShell() {
+/*--------------------*/
+/* Built-in functions */
+/*--------------------*/
+void exitShell(int status) {
     pidNode* currNode;
 
     fclose(histFile);
@@ -480,45 +525,55 @@ void exitShell() {
     printf("myShell terminating...\n");
 
     printf("\n[Process completed]\n");
-    exit(EXIT_SUCCESS);
+    exit(status);
 }
 
-void replaceVarInLine(char** inputStr) {
-    char envStr[12];
-    char *foundStr; // The first occurence of the env variable that's being searched for
-    char *afterStr; // The rest of inputStr after foundStr
-    char *newStr;   // the newly built string with the expanded value inside
-    char *tempStr; //temp pointer to original string, for freeing
-    int newSize;
+void exportENV( char **args ) {
+    // Input validation
+    if(args == NULL) {
+        return;
+    }
 
-    for(int i = 0; i < ENVAMT; i++) {
+    char* argCopy;
+    char* token = NULL;
+    char* newString = NULL;
+    int nameFoundFlag = 0;
 
-        // Build the environment string with $ in-front
-        strcpy(envStr, "$");
-        strcat(envStr, envList[i].name);
-
-        if( (foundStr = strstr(*inputStr, envStr)) != NULL ) {
-            // allocate and store all characters after the string we found
-            afterStr = (char*)malloc( (strlen( foundStr + strlen(envStr) )  + 1) * sizeof(char) ); 
-            strcpy(afterStr, foundStr + strlen(envStr));
-
-            // Calculate total amount of new characters
-            *foundStr = '\0';
-
-            newSize = strlen(*inputStr) + strlen(envList[i].value) + strlen(afterStr) + 1;
-
-            // create new string, add before foundStr, envList[i].value, and afterStr
-            newStr = (char*)malloc(newSize * sizeof(char));
-            strcpy(newStr, *inputStr);
-            strcat(newStr, envList[i].value);
-            strcat(newStr, afterStr);
-
-            // Free temp strings
-            tempStr = *inputStr;
-            *inputStr = newStr;
-            free(tempStr);
-            free(afterStr);
+    // Print all variables if no arguments are provided
+    if( args[1] == NULL ) {
+        for( int i = 0; i < ENVAMT; i++ ) {
+            printENV(envList[i]);
         }
+    }
+    // Check if export param was entered correctly and if so overwrite the variable
+    else {
+        argCopy = args[1];
+
+        // Separate name from the value
+        token = strtok_r(argCopy, "=", &argCopy);
+
+        // Search for name to overwrite
+        for(int i = 0; i < ENVAMT; i++) {
+            // Name found
+            if(strcmp(token, envList[i].name) == 0) {
+                nameFoundFlag = 1;
+                // Get the new value
+                token = strtok_r(argCopy, "=", &argCopy);
+                if(token == NULL) {
+                    fprintf(stderr, "Syntax Error near '='. No value found\n");
+                    break;
+                }
+                // Free current env variable value if not empty
+                if(envList[i].value != NULL) {
+                    free(envList[i].value);
+                }
+
+                // Allocate and store new value in env variable
+                envList[i].value = (char*)malloc( (strlen(token) + 1) * sizeof(char) );
+                strcpy(envList[i].value, token);
+            }
+        }
+
     }
 }
 
@@ -587,89 +642,61 @@ void history( char *amt ) {
 
 }
 
-void exportENV( char **args ) {
-    // Input validation
-    if(args == NULL) {
-        return;
-    }
+/*------------------*/
+/* Helper Functions */
+/*------------------*/
+void replaceVarInLine(char** inputStr) {
+    char envStr[12];
+    char *foundStr; // The first occurence of the env variable that's being searched for
+    char *afterStr; // The rest of inputStr after foundStr
+    char *newStr;   // the newly built string with the expanded value inside
+    char *tempStr; //temp pointer to original string, for freeing
+    int newSize;
 
-    char* argCopy;
-    char* token = NULL;
-    char* newString = NULL;
-    int nameFoundFlag = 0;
+    for(int i = 0; i < ENVAMT; i++) {
 
-    // Print all variables if no arguments are provided
-    if( args[1] == NULL ) {
-        for( int i = 0; i < ENVAMT; i++ ) {
-            printENV(envList[i]);
+        // Build the environment string with $ in-front
+        strcpy(envStr, "$");
+        strcat(envStr, envList[i].name);
+
+        if( (foundStr = strstr(*inputStr, envStr)) != NULL ) {
+            // allocate and store all characters after the string we found
+            afterStr = (char*)malloc( (strlen( foundStr + strlen(envStr) )  + 1) * sizeof(char) ); 
+            strcpy(afterStr, foundStr + strlen(envStr));
+
+            // Calculate total amount of new characters
+            *foundStr = '\0';
+
+            newSize = strlen(*inputStr) + strlen(envList[i].value) + strlen(afterStr) + 1;
+
+            // create new string, add before foundStr, envList[i].value, and afterStr
+            newStr = (char*)malloc(newSize * sizeof(char));
+            strcpy(newStr, *inputStr);
+            strcat(newStr, envList[i].value);
+            strcat(newStr, afterStr);
+
+            // Free temp strings
+            tempStr = *inputStr;
+            *inputStr = newStr;
+            free(tempStr);
+            free(afterStr);
         }
-    }
-    // Check if export param was entered correctly and if so overwrite the variable
-    else {
-        argCopy = args[1];
-
-        // Separate name from the value
-        token = strtok_r(argCopy, "=", &argCopy);
-
-        // Search for name to overwrite
-        for(int i = 0; i < ENVAMT; i++) {
-            // Name found
-            if(strcmp(token, envList[i].name) == 0) {
-                nameFoundFlag = 1;
-                // Get the new value
-                token = strtok_r(argCopy, "=", &argCopy);
-                if(token == NULL) {
-                    fprintf(stderr, "Syntax Error near '='. No value found\n");
-                    break;
-                }
-                // Free current env variable value if not empty
-                if(envList[i].value != NULL) {
-                    free(envList[i].value);
-                }
-
-                // Allocate and store new value in env variable
-                envList[i].value = (char*)malloc( (strlen(token) + 1) * sizeof(char) );
-                strcpy(envList[i].value, token);
-            }
-        }
-
     }
 }
 
-void printENV( env toPrint ) {
-    printf("declare -x %s=\"%s\"\n", toPrint.name, toPrint.value);
-}
-
-int parseIORedir(char* input, char** filename, char key) {
-    char* foundIndex;
-
-    if( (foundIndex = strchr(input, key)) != NULL) {
-        // more than one key provided
-        if( strchr(foundIndex+1, key) != NULL ) {
-            return -1;
-        }
-        
-        // key is final character, no filename provided
-        if(*foundIndex == input[strlen(input) - 1]) {
-            return -1;
-        }
-
-        *foundIndex = ' ';
-        *filename = findFilename(foundIndex+1);
-
-        if(strlen(*filename) == 0) {
-            return -1;
-        }
-
-        clearString(foundIndex, strlen(*filename));
-        return 1;
+// Attempt to open the history file in a given mode
+void openHistFile(char* mode) {
+    // Attempt to open history file
+    histFile = fopen(envList[1].value, mode);
+    if(histFile == NULL) {
+        fprintf(stderr, "Could not open history file %s\n", envList[1].value);
     }
-
-    return 0;
 }
 
+// replaces amt characters in a string with spaces
 void clearString(char* string, int amt){
 
+    // truncate amt if past total length of string
     if(amt > strlen(string)) {
         amt = strlen(string);
     }
@@ -679,12 +706,18 @@ void clearString(char* string, int amt){
         *string++;
     }
 
+    // replace characters with spaces
     for(int i = 0; i < amt; i++) {
         string[i] = ' ';
     }
 
 }
 
+void printENV( env toPrint ) {
+    printf("declare -x %s=\"%s\"\n", toPrint.name, toPrint.value);
+}
+
+// Finds filename in a given input line
 char* findFilename(char* string) {
     char* filename;
     int count;
@@ -709,92 +742,6 @@ char* findFilename(char* string) {
     }
     return filename;
 }
-
-void addToList( int pid ) {
-    pidNode* tempNode;
-    pidNode* newNode = (pidNode*)malloc(sizeof(pidNode));
-    newNode->pid = pid;
-    newNode->next = NULL;
-
-    // List is empty
-    if( pidList == NULL ) {
-        pidList = newNode;
-    }
-
-    // Add node to end of list
-    else{
-        tempNode = pidList;
-        for(int i = 0; i < pidAmt - 1; i++) {
-            tempNode = tempNode->next;
-        }
-
-        tempNode->next = newNode;
-    }
-
-    pidAmt++;
-    return;
-}
-
-void printList(){
-    printf("----\n");
-    pidNode* tempNode = pidList;
-    for(int i = 0; i < pidAmt; i++) {
-        printf("PID: %d\n", tempNode->pid);
-        tempNode = tempNode->next;
-    }
-}
-
-void removeFromList( int pid ) {
-    pidNode* prevNode;
-    pidNode* currNode;
-
-    // Pid list is empty
-    if( pidList == NULL ) {
-        return;
-    }
-
-    // Pid is head of list
-    if( pidList->pid == pid ) {
-        currNode = pidList;
-        pidList = pidList->next;
-
-        freeNode(currNode);
-    }
-    // Pid might be inside list
-    else {
-        currNode = pidList;
-        
-        // iterate through each node
-        while(currNode->next != NULL) {
-            prevNode = currNode;
-            currNode = currNode->next;
-
-            // Pid found
-            if( currNode->pid == pid ) {
-                prevNode->next = currNode->next;
-                freeNode(currNode);
-            }
-        }
-    }
-}
-
-void freeList() {
-    pidNode* currNode;
-    
-    // Iteratively remove nodes from list
-    while( pidList != NULL ) {
-        currNode = pidList;
-        pidList = pidList->next;
-        freeNode(currNode);
-    }
-
-}
-
-void freeNode(pidNode* node) {
-    free(node);
-    pidAmt--;
-}
-
 
 // Free all memory on child error
 void freeERROR( char* args[] ) {
@@ -836,10 +783,95 @@ void freeLineVariables( char ** args[2], char *outFile[2], char *inFile[2]) {
     }
 }
 
-void openHistFile(char* mode) {
-    // Attempt to open history file
-    histFile = fopen(envList[1].value, mode);
-    if(histFile == NULL) {
-        fprintf(stderr, "Could not open history file %s\n", envList[1].value);
+
+/*-----------------------*/
+/* Linked List Functions */
+/*-----------------------*/
+void addToList( int pid ) {
+    pidNode* tempNode;
+    pidNode* newNode = (pidNode*)malloc(sizeof(pidNode));
+    newNode->pid = pid;
+    newNode->next = NULL;
+
+    // List is empty
+    if( pidList == NULL ) {
+        pidList = newNode;
     }
+
+    // Add node to end of list
+    else{
+        tempNode = pidList;
+        for(int i = 0; i < pidAmt - 1; i++) {
+            tempNode = tempNode->next;
+        }
+
+        tempNode->next = newNode;
+    }
+
+    pidAmt++;
+    return;
+}
+
+// Print linked list for testing
+void printList(){
+    printf("----\n");
+    pidNode* tempNode = pidList;
+    for(int i = 0; i < pidAmt; i++) {
+        printf("PID: %d\n", tempNode->pid);
+        tempNode = tempNode->next;
+    }
+}
+
+// Search for and remove a PID from linked list
+void removeFromList( int pid ) {
+    pidNode* prevNode;
+    pidNode* currNode;
+
+    // Pid list is empty
+    if( pidList == NULL ) {
+        return;
+    }
+
+    // Pid is head of list
+    if( pidList->pid == pid ) {
+        currNode = pidList;
+        pidList = pidList->next;
+
+        freeNode(currNode);
+    }
+    // Pid might be inside list
+    else {
+        currNode = pidList;
+        
+        // iterate through each node
+        while(currNode->next != NULL) {
+            prevNode = currNode;
+            currNode = currNode->next;
+
+            // Pid found
+            if( currNode->pid == pid ) {
+                prevNode->next = currNode->next;
+                freeNode(currNode);
+            }
+        }
+    }
+}
+
+// Free a linked list
+void freeList() {
+    pidNode* currNode;
+    
+    // Iteratively remove nodes from list
+    while( pidList != NULL ) {
+        currNode = pidList;
+        pidList = pidList->next;
+        freeNode(currNode);
+    }
+
+}
+
+// Free a node inside a linked list
+void freeNode(pidNode* node) {
+    free(node);
+    pidAmt--;
 }
