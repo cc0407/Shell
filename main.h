@@ -35,6 +35,7 @@ void processHandler(char **args, int bg, char *outFile, char *inFile);
 char* readInputLine(FILE* infile);
 void exitShell();
 void exportENV(char **args);
+void replaceVarInLine(char** inputStr); // pointer to input string
 void printENV( env toPrint );
 void freeArgs(char ** args);
 void freeLineVariables( char ** args[2], char *outFile[2], char *inFile[2]);

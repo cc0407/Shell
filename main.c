@@ -30,6 +30,8 @@ void initENV() {
 
     // Allocate space for myPATH in envList[0]
     strcpy(envList[0].name, "myPATH");
+    envList[0].value = (char*)malloc( 10 * sizeof(char)); // allocate space for path variable and 
+    strcpy(envList[0].value, "temp");
 }
 
 void loadProfile() {
@@ -105,6 +107,11 @@ int parseLine (char* inputStr) {
         int background; 
         //int successfulParse;
 
+
+        // Replace all shell variables with their respective value
+        replaceVarInLine(&inputStr);
+
+        // Save a copy pointer to inputStr for freeing
         char* inputCopy = inputStr;
 
         // Initialize all variables
@@ -116,7 +123,7 @@ int parseLine (char* inputStr) {
         background = 0;
         pipe = 0;
 
-        /* End Internal Shell Commands */
+        
 
         // & and | parsing
         if((bgIndex = strchr(inputCopy, '&')) != NULL) {
@@ -158,6 +165,7 @@ int parseLine (char* inputStr) {
             freeLineVariables(args, outFile, inFile);
             return 1;
         }
+        /* End Internal Shell Commands */
 
         if(pipe) {
             pipedProcessHandler(args, background, outFile, inFile);
@@ -415,6 +423,45 @@ void exitShell() {
 
     printf("\n[Process completed]\n");
     exit(EXIT_SUCCESS);
+}
+
+void replaceVarInLine(char** inputStr) {
+    char envStr[12];
+    char *foundStr; // The first occurence of the env variable that's being searched for
+    char *afterStr; // The rest of inputStr after foundStr
+    char *newStr;   // the newly built string with the expanded value inside
+    char *tempStr; //temp pointer to original string, for freeing
+    int newSize;
+
+    for(int i = 0; i < ENVAMT; i++) {
+
+        // Build the environment string with $ in-front
+        strcpy(envStr, "$");
+        strcat(envStr, envList[i].name);
+        
+        if( (foundStr = strstr(*inputStr, envStr)) != NULL ) {
+            // allocate and store all characters after the string we found
+            afterStr = (char*)malloc( (strlen( foundStr + strlen(envStr) )  + 1) * sizeof(char) ); 
+            strcpy(afterStr, foundStr + strlen(envStr));
+
+            // Calculate total amount of new characters
+            *foundStr = '\0';
+
+            newSize = strlen(*inputStr) + strlen(envList[i].value) + strlen(afterStr) + 1;
+
+            // create new string, add before foundStr, envList[i].value, and afterStr
+            newStr = (char*)malloc(newSize * sizeof(char));
+            strcpy(newStr, *inputStr);
+            strcat(newStr, envList[i].value);
+            strcat(newStr, afterStr);
+
+            // Free temp strings
+            tempStr = *inputStr;
+            *inputStr = newStr;
+            free(tempStr);
+            free(afterStr);
+        }
+    }
 }
 
 //TODO add changing of variables with export
