@@ -75,7 +75,7 @@ void loadProfile(int* argCount) {
 
 void inputLoop(int* argCount) {
     char* inBuffer = NULL;
-
+    char pathBuffer[256];
     // For killing completed background processes
     pid_t asyncPID;
     int status;
@@ -90,7 +90,7 @@ void inputLoop(int* argCount) {
         }
 
         // wait for user input
-        printf("> ");
+        printf("%s> ", getcwd(pathBuffer, 256));
         inBuffer = readInputLine(NULL);
         parseLine(inBuffer, argCount);
         
