@@ -510,7 +510,9 @@ int newProcess(char **args, int bg, int pipeFlag, int fd[2], pid_t *childPid, ch
 void exitShell(int status) {
     pidNode* currNode;
 
-    fclose(histFile);
+    if(histFile != NULL) {
+        fclose(histFile);
+    }
     // Free all ENV variables
     for( int i = 0; i < ENVAMT; i++ ) {
         free(envList[i].value);
@@ -585,60 +587,62 @@ void history( char *amt ) {
     int readFlag = 1;
     int lineCount = 0;
     int amtAsInt;
-
-    // Reopen histFile for reading
-    fclose(histFile);
-    openHistFile("r");
     
-    // Param specified
-    if( amt != NULL) {
-        amtAsInt = atoi(amt);
+    if( histFile != NULL ) {
+        // Reopen histFile for reading
+        fclose(histFile);
+        openHistFile("r");
+        // Param specified
+        if( amt != NULL) {
+            amtAsInt = atoi(amt);
 
-        // If amtAsInt == 0 then can just reopen in append and return
-        if (amtAsInt != 0) {
+            // If amtAsInt == 0 then can just reopen in append and return
+            if (amtAsInt != 0) {
 
-            // Read through file, counting total number of lines
-            while(readFlag) {
-                input = readInputLine(histFile);
-                // EOF found
-                if(strchr(input, EOF) != NULL) {
+                // Read through file, counting total number of lines
+                while(readFlag) {
+                    input = readInputLine(histFile);
+                    // EOF found
+                    if(strchr(input, EOF) != NULL) {
+                        free(input);
+                        break;
+                    }
                     free(input);
-                    break;
+                    lineCount++;
                 }
-                free(input);
-                lineCount++;
-            }
-            lineCount -= amtAsInt;
+                lineCount -= amtAsInt;
 
-            // Go back to top of histFile
-            rewind(histFile);
-            // Skip over lines until we get to the last amtAsInt lines
-            while( lineCount > 0 ) {
-                input = readInputLine(histFile);
-                free(input);
-                lineCount--;
+                // Go back to top of histFile
+                rewind(histFile);
+                // Skip over lines until we get to the last amtAsInt lines
+                while( lineCount > 0 ) {
+                    input = readInputLine(histFile);
+                    free(input);
+                    lineCount--;
+                }
             }
         }
-    }
 
-    
-    // if no param, print whole history
-    // if param, print remaining lines in file
-    while(1) {
-        input = readInputLine(histFile);
-        // EOF found
-        if(strchr(input, EOF) != NULL) {
+        
+        // if no param, print whole history
+        // if param, print remaining lines in file
+        while(1) {
+            input = readInputLine(histFile);
+            // EOF found
+            if(strchr(input, EOF) != NULL) {
+                free(input);
+                break; 
+            }
+            printf("%s\n", input);
             free(input);
-            break; 
         }
-        printf("%s\n", input);
-        free(input);
+        // Reopen histFile in append mode and continue running
+        fclose(histFile);
+        openHistFile("a");
     }
-
-
-    // Reopen histFile in append mode and continue running
-    fclose(histFile);
-    openHistFile("a");
+    else {
+        printf("No history file present\n");
+    }
 
 }
 
