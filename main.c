@@ -526,22 +526,60 @@ void history( char *amt ) {
     char* input;
     char* EOFIndex;
     int readFlag = 1;
+    int lineCount = 0;
+    int amtAsInt;
 
     // Reopen histFile for reading
     fclose(histFile);
     openHistFile("r");
     
-    while(readFlag) {
+    // Param specified
+    if( amt != NULL) {
+
+        // Convert amt to int
+        amtAsInt = atoi(amt);
+
+        // If amtAsInt == 0 then can just reopen in append and return
+        if (amtAsInt != 0) {
+
+            // Read through file, counting total number of lines
+            while(readFlag) {
+                input = readInputLine(histFile);
+                // EOF found
+                if(strchr(input, EOF) != NULL) {
+                    free(input);
+                    break;
+                }
+                free(input);
+                lineCount++;
+            }
+            lineCount -= amtAsInt;
+
+            // Go back to top of histFile
+            rewind(histFile);
+            // Skip over lines until we get to the last amtAsInt lines
+            while( lineCount > 0 ) {
+                input = readInputLine(histFile);
+                free(input);
+                lineCount--;
+            }
+        }
+    }
+
+    
+    // if no param, print whole history
+    // if param, print remaining lines in file
+    while(1) {
         input = readInputLine(histFile);
         // EOF found
-        if((EOFIndex = strchr(input, EOF)) != NULL) {
-            readFlag = 0;
-            // remove EOF from final character
-            *EOFIndex = '\0'; 
+        if(strchr(input, EOF) != NULL) {
+            free(input);
+            break; 
         }
         printf("%s\n", input);
         free(input);
     }
+
 
     // Reopen histFile in append mode and continue running
     fclose(histFile);
