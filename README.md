@@ -142,6 +142,7 @@
 - If the user wants to include more than one path in $myPATH, they should be separated by `:`
 - `$myHOME` defaults to the users home directory
 - `$myHISTFILE` defaults to '~/CIS3110_history'
+- If no history file is present, it will be created
 ### Limitations
 - Restricted to only the three environment variables
 ### How it was tested
