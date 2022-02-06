@@ -30,8 +30,8 @@ void initENV() {
 
     // Allocate space for myPATH in envList[0]
     strcpy(envList[0].name, "myPATH");
-    envList[0].value = (char*)malloc( 10 * sizeof(char)); // allocate space for path variable and 
-    strcpy(envList[0].value, "temp");
+    envList[0].value = (char*)malloc( 5 * sizeof(char)); // allocate space for path variable and 
+    strcpy(envList[0].value, "/bin");
 }
 
 void loadProfile() {
@@ -438,7 +438,7 @@ void replaceVarInLine(char** inputStr) {
         // Build the environment string with $ in-front
         strcpy(envStr, "$");
         strcat(envStr, envList[i].name);
-        
+
         if( (foundStr = strstr(*inputStr, envStr)) != NULL ) {
             // allocate and store all characters after the string we found
             afterStr = (char*)malloc( (strlen( foundStr + strlen(envStr) )  + 1) * sizeof(char) ); 
@@ -464,18 +464,49 @@ void replaceVarInLine(char** inputStr) {
     }
 }
 
-//TODO add changing of variables with export
 void exportENV( char **args ) {
     // Input validation
     if(args == NULL) {
         return;
     }
 
+    char* argCopy;
+    char* token = NULL;
+    char* newString = NULL;
+    int nameFoundFlag = 0;
+
     // Print all variables if no arguments are provided
     if( args[1] == NULL ) {
         for( int i = 0; i < ENVAMT; i++ ) {
             printENV(envList[i]);
         }
+    }
+    // Check if export param was entered correctly and if so overwrite the variable
+    else {
+        argCopy = args[1];
+
+        // Separate name from the value
+        token = strtok_r(argCopy, "=", &argCopy);
+
+        // Search for name to overwrite
+        for(int i = 0; i < ENVAMT; i++) {
+            // Name found
+            if(strcmp(token, envList[i].name) == 0) {
+                nameFoundFlag = 1;
+                // Get the new value
+                token = strtok_r(argCopy, "=", &argCopy);
+
+                // Free current env variable value if not empty
+                if(envList[i].value != NULL) {
+                    free(envList[i].value);
+                }
+
+                // Allocate and store new value in env variable
+                envList[i].value = (char*)malloc( (strlen(token) + 1) * sizeof(char) );
+                strcpy(envList[i].value, token);
+            }
+        }
+
     }
 }
 
