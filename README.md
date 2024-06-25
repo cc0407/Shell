@@ -1,9 +1,8 @@
-# CIS 3110 Assignment 1
-## Shell - Christian Catalano, 1120832
+# Shell in C
+A homebrew shell written in C, to mimic the debian linux terminal.
 
-## **Functions Implemented:**
+# **Functions Implemented:**
 
----
 ## **exit**
 - This function will kill any active subprocesses and then exit the shell
 - The program identifies any active subprocesses by adding their PID to a linked list. On exit it will kill all PIDs present in the linked list
